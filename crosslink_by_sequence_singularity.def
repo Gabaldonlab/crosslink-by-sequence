@@ -1,0 +1,19 @@
+Bootstrap: docker
+From: python:3.10-bullseye
+
+%environment
+    export PATH=$PATH:/executables
+    export PIP_ROOT_USER_ACTION=ignore
+
+%files
+    . /crosslink-by-sequence
+
+%post
+    apt-get update && \
+    apt-get install -y libnsl* \
+                       build-essential \
+                       cmake \
+                       wget
+
+    pip install --upgrade pip
+    pip install -e /crosslink-by-sequence

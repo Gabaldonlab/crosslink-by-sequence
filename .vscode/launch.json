@@ -1,0 +1,30 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python Debugger: Module",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "crosslink_by_sequence",
+            "args": [
+                "--target_reference_species_fasta_gzip_file",
+                "./test_data/input_data/reference_proteomes/8.7165.faa.gz",
+                "--target_fasta_gzip_files",
+                "./test_data/input_data/target_proteomes/0.7165.fasta.gz",
+                "--output_directory",
+                "./test_data/output_data",
+                "--tmp_directory",
+                "./test_data/output_data/tmp",
+                "--max_threads",
+                "4",
+                "--minimum_coverage",
+                "0.5",
+                "--minimum_identity",
+                "0.5",
+            ]
+        }
+    ]
+}
