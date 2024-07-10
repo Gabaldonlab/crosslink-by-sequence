@@ -53,7 +53,6 @@ def get_md5_fasta(fasta_file_path: str) -> dict[str, list[str]]:
             md5: str = hashlib.md5(seq.encode("utf-8")).hexdigest()
             hash_to_protein.setdefault(md5, [])
             hash_to_protein[md5].append(external_id)
-    # print(dict(list(hash2prot.items())[0:2]))
     return hash_to_protein
 
 

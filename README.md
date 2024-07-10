@@ -1,6 +1,7 @@
 # crosslink-by-sequence
 
 ## 1. Install
+
 ```bash
 git clone https://github.com/gabaldonlab/crosslink-by-sequence
 cd crosslink-by-sequence
@@ -8,13 +9,30 @@ pip install -e .
 ```
 
 ## 2. Command example
+
 ```bash
-python3 /gpfs/projects/bsc40/current/avlasova/projects/metaphors/scripts_pipeline/xlink_analyze_blat.py \
-    --output_directory /gpfs/projects/bsc40/dfuentes/projects/qfo_2022/2022_vs_metaphorsIDs_0.5_0.5/ \
-    --tmp_directory /gpfs/projects/bsc40/current/dfuentes/projects/qfo_2022/fasta.xlink/tmp_5psl/ \
+crosslink-by-sequence \
+    --target_reference_species_fasta_gzip_file ./crosslink-by-sequence/input_data/reference-proteomes/8.9612.faa.gz \
+    --target_fasta_gzip_files ./crosslink-by-sequence/input_data/target-proteomes/0.9615.fasta.gz \
+    --output_directory ./crosslink-by-sequence/output_data \
+    --tmp_directory ./crosslink-by-sequence/output_data/tmp \
     --max_threads 4 \
-    --refSpecie /gpfs/projects/bsc40/project/pipelines/metaphors/metaphors-db-2019/data/fasta.reference/8.9612.faa.gz \
     --minimum_coverage 0.5 \
     --minimum_identity 0.5 \
-    --target_fasta_gzip_files /gpfs/projects/bsc40/current/dfuentes/projects/qfo_2022/2022_proteomes/0.9615.fasta.gz
+```
+
+## 3. Singularity image
+
+## 3.1. Build Singularity image for HPC cluster
+
+**NOTE**: Inside the HPC you won't have sudo permissions to build the image. So you will have to build it locally on your working machine, then copy it to the remote one.
+
+```bash
+sudo make build-singularity-image
+```
+
+## 3.2. Run Singularity image
+
+```bash
+singularity run --cleanenv crosslink_by_sequence_singularity.sif crosslink-by-sequence 
 ```

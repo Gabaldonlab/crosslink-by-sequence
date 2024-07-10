@@ -3,41 +3,19 @@ From: python:3.10-bullseye
 
 %environment
     export PATH=$PATH:/executables
+    export PIP_ROOT_USER_ACTION=ignore
 
 %files
-    ./bin-sources /bin-sources
-    ./src /executables/phylome_pipeline/src
-    ./bin /executables/phylome_pipeline/bin
-    ./setup.py /executables/phylome_pipeline/setup.py
-    ./__main__.py /executables/phylome_pipeline/__main__.py
-    ./requirements.txt /executables/phylome_pipeline/requirements.txt
+    . /crosslink-by-sequence
 
 %post
     apt-get update && \
     apt-get install -y libnsl* \
-                        build-essential \
-                        cmake
+                       build-essential \
+                       cmake \
+                       wget
 
-    pip install -e /executables/phylome_pipeline
+    pip install -e /crosslink-by-sequence
 
-    # INSTALL KALIGN FROM SOURCE
-    cd /bin-sources
-    tar -zxvf kalign-v3.4.0.tar.gz
-    cd kalign-3.4.0
-    mkdir build
-    cd build
-    cmake ..
-    make
-    make test
-    make install
-
-    # INSTALL MAFFT FROM SOURCE
-    cd /bin-sources
-    tar -zxvf mafft-7.490-with-extensions-src.tgz
-    cd mafft-7.490-with-extensions/core
-    make clean
-    make
-    make install
-
-%runscript
-    phylome_pipeline $@
+# %runscript
+#     phylome_pipeline $@
