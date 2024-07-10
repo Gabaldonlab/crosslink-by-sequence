@@ -44,13 +44,12 @@ import numpy as np
 @dataclass
 class CrosslinkBySequenceArgs:
     verbose: bool
-    target_fasta_gzip_file: list[str]
+    target_fasta_gzip_files: list[str]
     target_reference_species_fasta_gzip_file: str
     output_directory: str
     tmp_directory: str
     minimum_coverage: float
     minimum_identity: float
-    protein_limit: int
     max_threads: int
 
     @classmethod
@@ -108,12 +107,6 @@ class CrosslinkBySequenceArgs:
             default=0.98,
             type=float,
             help="Min. identity for blat hits  [%(default)s]",
-        )
-        parser.add_argument(
-            "--protein_limit",  # old: protein_limit
-            default=0,
-            type=int,
-            help="only taxa having >l proteins [%(default)s]",
         )
         parser.add_argument(
             "--max_threads",  # old: threads

@@ -21,20 +21,16 @@
 """
 from __future__ import annotations
 
-import argparse
 import gzip
 import hashlib
 import os
 import subprocess as sp
 import sys
-from dataclasses import dataclass
 from datetime import datetime
 from multiprocessing import Pool
 from pathlib import Path
 from typing import IO
-from typing import Iterable
 
-import numpy as np
 import pandas as pd
 from Bio import SeqIO
 
@@ -42,6 +38,7 @@ from crosslink_by_sequence.argument_parser import CrosslinkBySequenceArgs
 
 
 VERBOSE: bool = False
+
 
 def get_md5_fasta(fasta_file_path: str) -> dict[str, list[str]]:
     """
@@ -239,10 +236,8 @@ def process_taxid(
     reference_file: str,
     file_name: str,
     hash_to_meta: dict[str, list[str]],
-    taxid,
     minimum_coverage: float,
     minimum_identity: float,
-    protein_limit,
 ):
 
     name: str = os.path.basename(file_name)
@@ -264,9 +259,6 @@ def process_taxid(
     print("Rest ", leftover)
 
     if leftover > 0:
-        # run blat comparison between two files in the temporary folder
-        # this function returns ext2meta dictionary with keys - protein names from fileName and values - protein names from refFile
-        # ext2metaTmp = xLink_blat(ext2metaTmp, tmp_directory, refFile, fileName, minimum_coverage, minimum_identity)
         ext_to_meta_tmp = crosslink_diamond(
             ext_to_meta_tmp,
             tmp_dir,
@@ -284,7 +276,7 @@ def process_taxid(
         ["dbid", "extid", "version", "protid", "score"]
     ]
 
-    # format ext2meta to the format compartible with the current ext2meta schema in the DB
+    # Format ext2meta to the format compartible with the current ext2meta schema in the DB
     ext2metaFn = os.path.join(
         output_directory, "%s.ext2meta.tbl.gz" % filePrefix
     )
@@ -298,76 +290,41 @@ def process_taxid(
     numberOrphans = number_all - number_matched
     percOrphans = numberOrphans * 100 / number_all
 
-    logFn = os.path.join(output_directory, "%s.log" % filePrefix)
-    log = open(logFn, "wt")
-    print(
-        "%s\t%s\t%s\t%s\t%.2f"
-        % (filePrefix, number_all, number_matched, numberOrphans, percOrphans),
-        file=log,
-    )
-    log.close()
+    log_file_path: str = os.path.join(output_directory, "{filePrefix}.log")
+    with open(log_file_path, "wt", encoding="UTF-8") as opened_log_file:
+        opened_log_file.write(
+            f"{filePrefix}\t{number_all}\t{number_matched}\t{numberOrphans}\t{percOrphans:.2f}\n"
+        )
 
     return filePrefix
 
 
-def get_taxids(fileName):
-    """Return taxids and species2strains"""
-    taxid = fileName.split("/")[-1].split(".")[1]
-    return taxid
-
-
-def fasta_generator(
-    output_directory: str,
-    tmp_dir: str,
-    reference_file_path: str,
-    file_paths: Iterable[str],
-    taxid,
-    minimum_coverage,
-    minimum_identity,
-    protein_limit,
-):
-    for fastaFile in file_paths:
-        yield (
-            output_directory,
-            tmp_dir,
-            reference_file_path,
-            fastaFile,
-            taxid,
-            minimum_coverage,
-            minimum_identity,
-            protein_limit,
-        )
-
 def process(
-    fnames,
-    refFile,
-    output_directory,
-    tmp_directory,
-    nprocs,
-    minimum_coverage,
-    minimum_identity,
-    protein_limit,
+    target_fasta_files: list[str],
+    reference_file: str,
+    output_directory: str,
+    tmp_directory: str,
+    max_threads: int,
+    minimum_coverage: float,
+    minimum_identity: float,
 ):
     """xlink proteomes"""
-    taxid = 99999999
-    hash2meta = get_md5_fasta(refFile)
-    # process files
-    make_diamond_db(tmp_directory, refFile)
+    hash2meta = get_md5_fasta(reference_file)
 
-    multiprocessing_pool = Pool(nprocs)
+    make_diamond_db(tmp_directory, reference_file)
+
+    multiprocessing_pool = Pool(max_threads)
     tdata = []
-    for fastaFile in fnames:
+    for fastaFile in target_fasta_files:
         tdata.append(
             [
                 output_directory,
                 tmp_directory,
-                refFile,
+                reference_file,
                 fastaFile,
                 hash2meta,
-                taxid,
                 minimum_coverage,
                 minimum_identity,
-                protein_limit,
             ]
         )
 
@@ -378,8 +335,8 @@ def process(
     for idx, data in enumerate(parallelized_processes, 1):
         if not data:
             continue
-        fileNamePrefix = data
-        print(f" {idx} / {len(fnames)}  {fileNamePrefix}    \r")
+        fileNamePrefix: str = data
+        print(f" {idx} / {len(target_fasta_files)}  {fileNamePrefix}    \r")
         print(f"[INFO] done {fileNamePrefix} ")
 
 
@@ -392,11 +349,14 @@ def run_command(cmd: str, skip_error: bool) -> None:
         process.communicate("Y\n")
         if process.wait() != 0:
             print("Error ocurred, but you chose to ommit it")
+            return
     else:
         try:
             process = sp.Popen(cmd, shell=True)
         except OSError as e:
-            sys.exit("Error: Execution cmd failed")
+            print("Error: Execution cmd failed", file=sys.stderr)
+            raise e
+
         process.communicate("Y\n")
         if process.wait() != 0:
             raise ChildProcessError(f"ERROR: Execution of cmd [{cmd}] failed.")
@@ -429,7 +389,6 @@ def main() -> int:
         args.max_threads,
         args.minimum_coverage,
         args.minimum_identity,
-        args.protein_limit,
     )
 
     dt = datetime.now() - t0
