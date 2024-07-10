@@ -141,8 +141,8 @@ def crosslink_diamond(
 
         Q: str = lData[0]
         T: str = lData[1]
-        identity: str = lData[2]
-        aLength: str = lData[3]
+        identity: float = float(lData[2]) / 100
+        aLength: int = int(lData[3])
         nMis: str = lData[4]
         nGaps: str = lData[5]
         sQ: str = lData[6]
@@ -151,9 +151,6 @@ def crosslink_diamond(
         eS: str = lData[9]
         expV: str = lData[10]
         score: str = lData[11]
-
-        aLength: int = int(aLength)
-        identity: float = float(identity) / 100
 
         length: int = lenSequenceSubj[T]
         if lenSequence[Q] > lenSequenceSubj[T]:
