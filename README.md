@@ -2,7 +2,9 @@
 
 ## 1. Install
 ```bash
-pip install -e ./crosslink_by_sequence
+git clone https://github.com/gabaldonlab/crosslink-by-sequence
+cd crosslink-by-sequence
+pip install -e .
 ```
 
 ## 2. Command example
