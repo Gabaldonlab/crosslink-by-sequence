@@ -370,6 +370,7 @@ def run_command_with_return(cmd: str) -> list[bytes]:
 
 
 def main() -> int:
+    print("==> ", Path(__file__).parent / "bin" / "diamond")
     t0 = datetime.now()
     args = CrosslinkBySequenceArgs.get_arguments()
     VERBOSE = args.verbose

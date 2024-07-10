@@ -1,7 +1,11 @@
 # crosslink-by-sequence
 
+## 1. Install
+```bash
+pip install -e ./crosslink_by_sequence
+```
 
-## Command example
+## 2. Command example
 ```bash
 python3 /gpfs/projects/bsc40/current/avlasova/projects/metaphors/scripts_pipeline/xlink_analyze_blat.py \
     --output_directory /gpfs/projects/bsc40/dfuentes/projects/qfo_2022/2022_vs_metaphorsIDs_0.5_0.5/ \
