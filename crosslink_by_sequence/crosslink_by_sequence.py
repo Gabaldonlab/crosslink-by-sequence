@@ -29,7 +29,7 @@ import sys
 from datetime import datetime
 from multiprocessing import Pool
 from pathlib import Path
-from typing import IO
+from typing import IO, Any
 
 import pandas as pd
 from Bio import SeqIO  # type: ignore
@@ -186,16 +186,26 @@ def crosslink_diamond(
 
     q2t_frame = pd.DataFrame.from_dict(q2t, orient="index")
     if len(q2t_frame.index) > 1:
-        q2t_frame = q2t_frame.unstack().dropna().sort_index(level=1)
-        q2t_frame = q2t_frame.reset_index(level=[0])
-        q2t_frame["extId"] = q2t_frame.index
-        q2t_frame = q2t_frame.reset_index()
+        q2t_series: pd.Series[Any] | pd.DataFrame = (
+            q2t_frame.unstack().dropna().sort_index(level=1)
+        )
+        q2t_series = q2t_series.reset_index(level=[0])
+        q2t_series["extId"] = q2t_series.index
+        q2t_series.reset_index(inplace=True)
+        q2t_series.rename(
+            columns={
+                "index": "index",
+                "level_0": "oldIndex",
+                0: "value",
+                "extId": "extId",
+            },
+            inplace=True,
+        )
 
-        q2t_frame.columns = ["index", "oldIndex", "value", "extId"]
-
-        ext2metaBlat = pd.DataFrame(q2t_frame["value"].tolist())
-        ext2metaBlat.columns = ["protid", "score"]
-        ext2metaBlat["extid"] = q2t_frame["extId"]
+        ext2metaBlat = pd.DataFrame(
+            q2t_series["value"].tolist(), columns=["protid", "score"]
+        )
+        ext2metaBlat["extid"] = q2t_series["extId"]
         ext2metaBlat = ext2metaBlat[["extid", "score", "protid"]]
 
         # Select only rows that were not matched by md5.
