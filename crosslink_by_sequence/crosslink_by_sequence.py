@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import IO
 
 import pandas as pd
-from Bio import SeqIO
+from Bio import SeqIO  # type: ignore
 
 from crosslink_by_sequence.argument_parser import CrosslinkBySequenceArgs
 
