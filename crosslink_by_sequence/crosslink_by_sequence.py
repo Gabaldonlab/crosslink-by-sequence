@@ -29,7 +29,7 @@ import sys
 from datetime import datetime
 from multiprocessing import Pool
 from pathlib import Path
-from typing import IO, Any
+from typing import IO, Any, Generator, TypedDict
 
 import pandas as pd
 from Bio import SeqIO  # type: ignore
@@ -70,7 +70,7 @@ def make_diamond_db(tmp_dir: str, reference_file: str) -> None:
         print("[INFO] Diamond DB file exists for ", reference_file)
 
 
-def get_sequence_length(fasta_file_path: str) -> dict[str, int]:
+def get_sequence_lengths(fasta_file_path: str) -> dict[str, int]:
     """
     @return dict[str, int]
         { external_id: <sequence_length: int> }
@@ -84,18 +84,67 @@ def get_sequence_length(fasta_file_path: str) -> dict[str, int]:
     return sequence_lengths
 
 
-def crosslink_diamond(
-    ext2meta: pd.DataFrame,
-    tmp_dir: str,
-    reference_file: str,
-    missing_file_name: str,
-    minimum_coverage: float,
-    minimum_identity: float,
-    threads: int,
-) -> pd.DataFrame:
-    db_file_name: str = f"{os.path.basename(reference_file)}db"
+class DiamondOutputFileLine(TypedDict):
+    query_id: str  # Query ID
+    subject_id: str  # Subject ID
+    identity: float  # Percentage of identical matches
+    alignment_length: int  # Alignment length
+    mismatches_number: str  # Number of mismatches
+    gap_openings_number: str  # Number of gap openings
+    query_alignment_start: str  # Start of alignment in query
+    query_alignment_end: str  # End of alignment in query
+    subject_alignment_start: str  # Start of alignment in subject
+    subject_alignment_end: str  # End of alignment in subject
+    expected_value: str  # Expected value
+    bit_score: str  # Bit score
 
-    # run diamond
+
+def yield_output_file_lines(
+    output_file_path: str,
+) -> Generator[DiamondOutputFileLine, None, None]:
+    with open(output_file_path, "r", encoding="UTF-8") as opened_diamond_file:
+        for line in opened_diamond_file:
+            stripped_line: str = line.strip()
+            if not stripped_line or stripped_line.startswith("#"):
+                continue
+                # skip lines with errors
+            split_line: list[str] = stripped_line.split("\t")
+            if len(split_line) != 12:
+                if VERBOSE:
+                    print(
+                        f"  Error: blat2xlinks:"
+                        " Expected 12 elements in line,"
+                        f" got {len(split_line)} {str(split_line)}!",
+                        file=sys.stderr,
+                    )
+                continue
+
+            mapped_line: DiamondOutputFileLine = {
+                "query_id": split_line[0],
+                "subject_id": split_line[1],
+                "identity": float(split_line[2]) / 100,
+                "alignment_length": int(split_line[3]),
+                "mismatches_number": split_line[4],
+                "gap_openings_number": split_line[5],
+                "query_alignment_start": split_line[6],
+                "query_alignment_end": split_line[7],
+                "subject_alignment_start": split_line[8],
+                "subject_alignment_end": split_line[9],
+                "expected_value": split_line[10],
+                "bit_score": split_line[11],
+            }
+            yield mapped_line
+
+
+def run_diamond(
+    tmp_dir: str, missing_file_name: str, threads: int, reference_file: str
+) -> str:
+    """
+    Runs Diamond as a process with the given parameters.
+
+    @return str - The output file's path.
+    """
+    db_file_name: str = f"{os.path.basename(reference_file)}db"
     database_file_path: str = os.path.join(tmp_dir, db_file_name)
     output_file_name: str = f"{os.path.basename(missing_file_name)}diamond"
     output_file_path: str = os.path.join(tmp_dir, output_file_name)
@@ -113,78 +162,74 @@ def crosslink_diamond(
         f" --threads {threads}"
     )
 
-    # TODO - check existance of the file
-    run_command(cmd, False)
-    lenSequence: dict[str, int] = get_sequence_length(missing_file_name)
-    lenSequenceSubj = get_sequence_length(reference_file)
+    # TODO: check existance of the file
+    run_command(cmd=cmd, skip_error=False)
+    return output_file_path
+
+
+def crosslink_diamond(
+    ext2meta: pd.DataFrame,
+    tmp_dir: str,
+    reference_file: str,
+    missing_file_name: str,
+    minimum_coverage: float,
+    minimum_identity: float,
+    threads: int,
+) -> pd.DataFrame:
+    output_file_path: str = run_diamond(
+        tmp_dir, missing_file_name, threads, reference_file
+    )
+    missing_sequence_lengths: dict[str, int] = get_sequence_lengths(
+        missing_file_name
+    )
+    reference_sequence_lengths: dict[str, int] = get_sequence_lengths(
+        reference_file
+    )
 
     # parse diamond output
-    q2t = {}
-    Qset = set()
-    Tset = set()
-    for line in open(output_file_path):
-        line = line.strip()
-        if not line or line.startswith("#"):
+    unique_query_ids: set[str] = set()
+    unique_subject_ids: set[str] = set()
+    query_to_target: dict[str, list[tuple[str, float]]] = {}
+    output_file_lines: Generator[DiamondOutputFileLine, None, None] = (
+        yield_output_file_lines(output_file_path)
+    )
+    for line in output_file_lines:
+        length: int = reference_sequence_lengths[line["subject_id"]]
+        if (
+            missing_sequence_lengths[line["query_id"]]
+            > reference_sequence_lengths[line["subject_id"]]
+        ):
+            length = missing_sequence_lengths[line["query_id"]]
+
+        unique_query_ids.add(line["query_id"])
+        unique_subject_ids.add(line["subject_id"])
+
+        # Filter low line["identity"] or low coverage hits.
+        coverage: float = 1.0 * (line["alignment_length"]) / length
+        if coverage < minimum_coverage or line["identity"] < minimum_identity:
             continue
 
-        # Query ID, Subject ID, Percentage of identical matches, Alignment length, Number of mismatches, Number of gap openings, Start of alignment in query, End of alignment in query, Start of alignment in subject, End of alignment in subject, Expected value, Bit score
-        lData: list[str] = line.split("\t")
-
-        # skip lines with errors
-        if len(lData) != 12:
-            if VERBOSE:
-                print(
-                    f"  Error: blat2xlinks: Expected 12 elements in line, got {len(lData)} {str(lData)}!\n",
-                    file=sys.stderr,
-                )
-            continue
-
-        Q: str = lData[0]
-        T: str = lData[1]
-        identity: float = float(lData[2]) / 100
-        aLength: int = int(lData[3])
-        nMis: str = lData[4]
-        nGaps: str = lData[5]
-        sQ: str = lData[6]
-        eQ: str = lData[7]
-        sS: str = lData[8]
-        eS: str = lData[9]
-        expV: str = lData[10]
-        score: str = lData[11]
-
-        length: int = lenSequenceSubj[T]
-        if lenSequence[Q] > lenSequenceSubj[T]:
-            length = lenSequence[Q]
-
-        cov: float = 1.0 * (aLength) / length
-
-        # store Q and T
-        Qset.add(Q)
-        Tset.add(T)
-
-        # Filter low identity or low coverage hits.
-        if cov < minimum_coverage or identity < minimum_identity:
-            continue
-
-        Qprotid: str = Q
-        Tprotid: str = T
-        iScore: float = (identity + cov) / 2
-        Tdata: tuple[str, float] = (Tprotid, iScore)
+        query_protein_id: str = line["query_id"]
+        target_protein_id: str = line["subject_id"]
+        identity_score: float = (line["identity"] + coverage) / 2
+        target_data: tuple[str, float] = (target_protein_id, identity_score)
 
         # Save only the best match for each query,
         # more than one allowed, if best matches
         # has got the same score
-        q2t.setdefault(Qprotid, [Tdata])
-        if Qprotid in q2t:
-            # append matches if same iScore
-            if iScore == q2t[Qprotid][0][1]:
-                q2t[Qprotid].append(Tdata)
+        query_to_target.setdefault(query_protein_id, [target_data])
+        if query_protein_id in query_to_target:
+            # append matches if same identity_score
+            if identity_score == query_to_target[query_protein_id][0][1]:
+                query_to_target[query_protein_id].append(target_data)
 
-            # update matches if better iScore
-            elif iScore > q2t[Qprotid][0][1]:
-                q2t[Qprotid] = [Tdata]
+            # update matches if better identity_score
+            elif identity_score > query_to_target[query_protein_id][0][1]:
+                query_to_target[query_protein_id] = [target_data]
 
-    q2t_frame = pd.DataFrame.from_dict(q2t, orient="index")
+    q2t_frame = pd.DataFrame.from_dict(query_to_target, orient="index")
+
+    # If there's more than one record for query_to_target, re-arrange and re-format the dataframe.
     if len(q2t_frame.index) > 1:
         q2t_series: pd.Series[Any] | pd.DataFrame = (
             q2t_frame.unstack().dropna().sort_index(level=1)
@@ -202,17 +247,17 @@ def crosslink_diamond(
             inplace=True,
         )
 
-        ext2metaBlat = pd.DataFrame(
+        ext_to_meta_diamond = pd.DataFrame(
             q2t_series["value"].tolist(), columns=["protid", "score"]
         )
-        ext2metaBlat["extid"] = q2t_series["extId"]
-        ext2metaBlat = ext2metaBlat[["extid", "score", "protid"]]
+        ext_to_meta_diamond["extid"] = q2t_series["extId"]
+        ext_to_meta_diamond = ext_to_meta_diamond[["extid", "score", "protid"]]
 
         # Select only rows that were not matched by md5.
-        ext2metaBlat = ext2metaBlat[
-            ~ext2metaBlat["extid"].isin(ext2meta["extid"])
+        ext_to_meta_diamond = ext_to_meta_diamond[
+            ~ext_to_meta_diamond["extid"].isin(ext2meta["extid"])
         ]
-        ext2meta = pd.concat([ext2meta, ext2metaBlat], axis=0)
+        ext2meta = pd.concat([ext2meta, ext_to_meta_diamond], axis=0)
     return ext2meta
 
 
