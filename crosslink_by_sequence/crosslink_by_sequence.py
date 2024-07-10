@@ -60,7 +60,9 @@ def make_diamond_db(tmp_dir: str, reference_file: str) -> None:
     db_file_name: str = f"{os.path.basename(reference_file)}db"
     output_file_path: str = os.path.join(tmp_dir, db_file_name)
     diamond_bin_path: str = str(Path(__file__).parent / "bin" / "diamond")
-    cmd: str = f"{diamond_bin_path} makedb -d {output_file_path} --in {reference_file} "
+    cmd: str = (
+        f"{diamond_bin_path} makedb -d {output_file_path} --in {reference_file} "
+    )
     if not os.path.isfile(output_file_path + ".dmnd"):
         run_command(cmd, False)
         print(cmd)
@@ -222,10 +224,14 @@ def crosslink_md5(
             for extID in hash_to_external[md5]:
                 # add ext2meta entry
                 for metIDEl in metaID:
-                    ext2meta = ext2meta.append(
-                        pd.DataFrame(
-                            [[extID, "1", metIDEl]], columns=ext2meta.columns
-                        )
+                    ext2meta = pd.concat(
+                        [
+                            ext2meta,
+                            pd.DataFrame(
+                                [[extID, "1", metIDEl]],
+                                columns=ext2meta.columns,
+                            ),
+                        ]
                     )
     return ext2meta
 
@@ -288,13 +294,13 @@ def process_taxid(
     # Calculate number of matched and non-matched proteins.
     # Print some stats with the percentage of orphans per file.
     number_matched = ext_to_meta_tmp["extid"].nunique()
-    numberOrphans = number_all - number_matched
-    percOrphans = numberOrphans * 100 / number_all
+    numberOrphans = number_all_result - number_matched
+    percOrphans = numberOrphans * 100 / number_all_result
 
-    log_file_path: str = os.path.join(output_directory, "{filePrefix}.log")
+    log_file_path: str = os.path.join(output_directory, f"{filePrefix}.log")
     with open(log_file_path, "wt", encoding="UTF-8") as opened_log_file:
         opened_log_file.write(
-            f"{filePrefix}\t{number_all}\t{number_matched}\t{numberOrphans}\t{percOrphans:.2f}\n"
+            f"{filePrefix}\t{number_all_result}\t{number_matched}\t{numberOrphans}\t{percOrphans:.2f}\n"
         )
 
     return filePrefix
@@ -394,7 +400,5 @@ def main() -> int:
     )
 
     dt = datetime.now() - t0
-    sys.stderr.write()
-
     print(f"#Time elapsed: {dt}")
     return 0
