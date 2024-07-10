@@ -256,10 +256,10 @@ def process_taxid(
     hash_to_ext: dict[str, list[str]] = get_md5_fasta(file_name)
     ext_to_meta_tmp: pd.DataFrame = crosslink_md5(hash_to_meta, hash_to_ext)
 
-    number_all: list[bytes] = run_command_with_return(
+    number_all: list[str] = run_command_with_return(
         f"zcat {file_name} | grep -c '>'"
     )
-    number_all_result: int = int(number_all[0].decode("utf-8").strip())
+    number_all_result: int = int(number_all[0])
     number_matched: int = ext_to_meta_tmp["extid"].nunique()
 
     leftover: int = number_all_result - number_matched
@@ -369,11 +369,16 @@ def run_command(cmd: str, skip_error: bool) -> None:
             raise ChildProcessError(f"ERROR: Execution of cmd [{cmd}] failed.")
 
 
-def run_command_with_return(cmd: str) -> list[bytes]:
-    process_stdout: IO[bytes] | None = sp.Popen(
-        cmd, shell=True, stdout=sp.PIPE
-    ).stdout
-    return process_stdout.readlines()
+def run_command_with_return(cmd: str) -> list[str]:
+    process = sp.Popen(cmd, shell=True, stdout=sp.PIPE)
+    process_stdout: IO[bytes] | None = process.stdout
+    if not process_stdout:
+        return []
+    process_stdout_lines: list[bytes] = process_stdout.readlines()
+    decoded_process_stdout_lines: list[str] = [
+        line.decode("utf-8").strip() for line in process_stdout_lines
+    ]
+    return decoded_process_stdout_lines
 
 
 def main() -> int:
