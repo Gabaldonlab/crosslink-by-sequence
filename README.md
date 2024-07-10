@@ -1,12 +1,21 @@
 # crosslink-by-sequence
 
-## 1. Install
+## 1. Setup on Unix systems
+
+### 1.1 Install
 
 ```bash
 git clone https://github.com/gabaldonlab/crosslink-by-sequence
 cd crosslink-by-sequence
-pip install -e .
+make install
 ```
+
+### 1.2 Uninstall
+
+```bash
+make uninstall
+```
+
 
 ## 2. Command example
 
@@ -18,7 +27,7 @@ crosslink-by-sequence \
     --tmp_directory ./crosslink-by-sequence/output_data/tmp \
     --max_threads 4 \
     --minimum_coverage 0.5 \
-    --minimum_identity 0.5 \
+    --minimum_identity 0.5
 ```
 
 ## 3. Singularity image
@@ -34,5 +43,5 @@ sudo make build-singularity-image
 ## 3.2. Run Singularity image
 
 ```bash
-singularity run --cleanenv crosslink_by_sequence_singularity.sif crosslink-by-sequence 
+singularity run --cleanenv crosslink_by_sequence_singularity.sif crosslink-by-sequence < ...rest_of_the_arguments... >
 ```

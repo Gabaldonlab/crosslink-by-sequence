@@ -59,7 +59,8 @@ def get_md5_fasta(fasta_file_path: str) -> dict[str, list[str]]:
 def make_diamond_db(tmp_dir: str, reference_file: str) -> None:
     db_file_name: str = f"{os.path.basename(reference_file)}db"
     output_file_path: str = os.path.join(tmp_dir, db_file_name)
-    cmd: str = f"diamond makedb -d {output_file_path} --in {reference_file} "
+    diamond_bin_path: str = str(Path(__file__).parent / "bin" / "diamond")
+    cmd: str = f"{diamond_bin_path} makedb -d {output_file_path} --in {reference_file} "
     if not os.path.isfile(output_file_path + ".dmnd"):
         run_command(cmd, False)
         print(cmd)
@@ -98,8 +99,9 @@ def crosslink_diamond(
     output_file_path: str = os.path.join(tmp_dir, output_file_name)
 
     # -tileSize=8 caused `Internal error genoFind.c 2225` error
+    diamond_bin_path: str = str(Path(__file__).parent / "bin" / "diamond")
     cmd: str = (
-        f"diamond blastp "
+        f"{diamond_bin_path} blastp "
         f" --db {database_file_path}"
         f" --query {missing_file_name}"
         f" --out {output_file_path}"
