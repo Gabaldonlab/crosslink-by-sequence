@@ -90,7 +90,7 @@ def crosslink_diamond(
     minimum_coverage: float,
     minimum_identity: float,
     threads: int,
-):
+) -> pd.DataFrame:
     db_file_name: str = f"{os.path.basename(reference_file)}db"
 
     # run diamond
@@ -239,7 +239,7 @@ def process_taxid(
     hash_to_meta: dict[str, list[str]],
     minimum_coverage: float,
     minimum_identity: float,
-):
+) -> str:
 
     name: str = os.path.basename(file_name)
     print("[INFO] Xlink ", name)
@@ -308,7 +308,7 @@ def process(
     max_threads: int,
     minimum_coverage: float,
     minimum_identity: float,
-):
+) -> None:
     """xlink proteomes"""
     hash2meta = get_md5_fasta(reference_file)
 
@@ -347,7 +347,7 @@ def run_command(cmd: str, skip_error: bool) -> None:
             process = sp.Popen(cmd, shell=True)
         except:
             pass
-        process.communicate("Y\n")
+        process.communicate(b"Y\n")
         if process.wait() != 0:
             print("Error ocurred, but you chose to ommit it")
             return
@@ -358,7 +358,7 @@ def run_command(cmd: str, skip_error: bool) -> None:
             print("Error: Execution cmd failed", file=sys.stderr)
             raise e
 
-        process.communicate("Y\n")
+        process.communicate(b"Y\n")
         if process.wait() != 0:
             raise ChildProcessError(f"ERROR: Execution of cmd [{cmd}] failed.")
 
