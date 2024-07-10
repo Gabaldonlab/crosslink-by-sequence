@@ -23,10 +23,9 @@ from __future__ import annotations
 
 import argparse
 import sys
-from typing import Optional
 
 from dataclasses import dataclass
-
+from pathlib import Path
 import argparse, os, sys
 import gzip, hashlib
 import subprocess as sp
@@ -38,9 +37,12 @@ from datetime import datetime
 from multiprocessing import Pool
 
 
+from crosslink_by_sequence.argument_parser import CrosslinkBySequenceArgs
 import pandas as pd
 import numpy as np
 
+
+VERBOSE: bool = False
 
 def get_md5_fasta(fasta_file_path: str) -> dict[str, list[str]]:
     """
@@ -154,7 +156,7 @@ def crosslink_diamond(
             Tset.add(T)
         # skip lines with errors
         else:
-            if verbose:
+            if VERBOSE:
                 sys.stderr.write(
                     "  Error: blat2xlinks: Expected 21 elements in line, got %s %s!\n"
                     % (len(lData), str(lData))
@@ -219,14 +221,14 @@ def crosslink_diamond(
     return ext2meta
 
 
-def xLink_blat(ext2meta, tmpDir, refFile, missingFn, covTh, idTh):
+def xLink_blat(ext2meta, tmp_directory, refFile, missingFn, covTh, idTh):
 
     # run blat
-    outputFileName = tmpDir + os.path.basename(missingFn)
+    outputFileName = tmp_directory + os.path.basename(missingFn)
     psl = "%s.psl" % outputFileName
     # -tileSize=8 caused `Internal error genoFind.c 2225` error
     cmd = (
-        "blat -prot -out=psl -minIdentity=90 -minMatch=1 -out=psl -noHead %s %s %s"
+        "blat -prot -out=psl -minimum_identity=90 -minMatch=1 -out=psl -noHead %s %s %s"
         % (refFile, missingFn, psl)
     )
     # print(cmd)
@@ -366,9 +368,9 @@ def xLink_md5(hash2meta, hash2ext):
     return ext2meta
 
 
-# outDir, tmpDir, refFile, fnames, taxid, minCoverage, minIdentity, protLimit
+# output_directory, tmp_directory, refFile, fnames, taxid, minimum_coverage, minimum_identity, protein_limit
 def process_taxid(
-    outDir,
+    output_directory,
     tmp_dir,
     reference_file,
     file_name,
@@ -376,7 +378,7 @@ def process_taxid(
     taxid,
     minimum_coverage,
     minimum_identity,
-    protLimit,
+    protein_limit,
 ):
 
     name: str = os.path.basename(file_name)
@@ -401,7 +403,7 @@ def process_taxid(
     if leftover > 0:
         # run blat comparison between two files in the temporary folder
         # this function returns ext2meta dictionary with keys - protein names from fileName and values - protein names from refFile
-        # ext2metaTmp = xLink_blat(ext2metaTmp, tmpDir, refFile, fileName, minCoverage, minIdentity)
+        # ext2metaTmp = xLink_blat(ext2metaTmp, tmp_directory, refFile, fileName, minimum_coverage, minimum_identity)
         ext_to_meta_tmp = crosslink_diamond(
             ext_to_meta_tmp,
             tmp_dir,
@@ -420,12 +422,14 @@ def process_taxid(
     ]
 
     # format ext2meta to the format compartible with the current ext2meta schema in the DB
-    ext2metaFn = os.path.join(outDir, "%s.ext2meta.tbl.gz" % filePrefix)
+    ext2metaFn = os.path.join(
+        output_directory, "%s.ext2meta.tbl.gz" % filePrefix
+    )
     ext_to_meta_tmp.to_csv(
         ext2metaFn, compression="gzip", index=False, sep="\t", header=False
     )
     # format fasta file with orphans
-    # outOrphans = outDir+filePrefix+".orphans.faa.gz"
+    # outOrphans = output_directory+filePrefix+".orphans.faa.gz"
     # print("[INFO] writing orphans for ",name )
     # saveGzipFasta(fileName,ext2metaTmp["extid"].unique(), outOrphans, 'invert' )
 
@@ -435,7 +439,7 @@ def process_taxid(
     numberOrphans = number_all - number_matched
     percOrphans = numberOrphans * 100 / number_all
 
-    logFn = os.path.join(outDir, "%s.log" % filePrefix)
+    logFn = os.path.join(output_directory, "%s.log" % filePrefix)
     log = open(logFn, "wt")
     print(
         "%s\t%s\t%s\t%s\t%.2f"
@@ -459,9 +463,9 @@ def fasta_generator(
     reference_file_path: str,
     file_paths: Iterable[str],
     taxid,
-    minCoverage,
-    minIdentity,
-    protLimit,
+    minimum_coverage,
+    minimum_identity,
+    protein_limit,
 ):
     for fastaFile in file_paths:
         yield (
@@ -470,9 +474,9 @@ def fasta_generator(
             reference_file_path,
             fastaFile,
             taxid,
-            minCoverage,
-            minIdentity,
-            protLimit,
+            minimum_coverage,
+            minimum_identity,
+            protein_limit,
         )
 
 
@@ -495,12 +499,12 @@ def saveGzipFasta(file_path: str, idList, outName, param):
 def process(
     fnames,
     refFile,
-    outDir,
-    tmpDir,
+    output_directory,
+    tmp_directory,
     nprocs,
-    minCoverage,
-    minIdentity,
-    protLimit,
+    minimum_coverage,
+    minimum_identity,
+    protein_limit,
 ):
     """xlink proteomes"""
     ###get taxids and species2strains
@@ -509,23 +513,23 @@ def process(
     hash2meta = get_md5_fasta(refFile)
     ###process files
     # print("[INFO] Processing taxa ", taxid)
-    make_diamond_db(tmpDir, refFile)
+    make_diamond_db(tmp_directory, refFile)
 
     multiprocessing_pool = Pool(nprocs)
-    # tdata = fasta_generator(outDir, tmpDir, refFile, fnames, taxid, minCoverage, minIdentity, protLimit)
+    # tdata = fasta_generator(output_directory, tmp_directory, refFile, fnames, taxid, minimum_coverage, minimum_identity, protein_limit)
     tdata = []
     for fastaFile in fnames:
         tdata.append(
             [
-                outDir,
-                tmpDir,
+                output_directory,
+                tmp_directory,
                 refFile,
                 fastaFile,
                 hash2meta,
                 taxid,
-                minCoverage,
-                minIdentity,
-                protLimit,
+                minimum_coverage,
+                minimum_identity,
+                protein_limit,
             ]
         )
 
@@ -568,7 +572,7 @@ def run_command(cmd: str, skip_error: bool) -> None:
             sys.exit("Error: Execution cmd failed")
         process.communicate("Y\n")
         if process.wait() != 0:
-            sys.exit("ERROR: Execution cmd failed")
+            raise ChildProcessError(f"ERROR: Execution of cmd [{cmd}] failed.")
 
 
 def run_command_with_return(cmd: str) -> list[bytes]:
@@ -578,113 +582,31 @@ def run_command_with_return(cmd: str) -> list[bytes]:
     return process_stdout.readlines()
 
 
-@dataclass
-class CrosslinkBySequenceArgs:
-    verbose: bool
-    target_fasta_gzip_file: list[str]
-    target_reference_species_fasta_gzip_file: str
-    output_directory: str
-    tmp_directory: str
-    minimum_coverage: float
-    minimum_identity: float
-    protein_limit: int
-    max_threads: int
-
-    @classmethod
-    def get_arguments(cls, args=sys.argv[1:]) -> CrosslinkBySequenceArgs:
-        desc: str = """
-            The tool takes as input a reference proteome file with protein IDs in the fasta headers and proteome for cross linking.
-            The output of the tool is a table with the following header fields:
-                - "dbid"
-                - "extid"
-                - "version"
-                - "protid"
-                - "score"
-            """
-        epilog: str = "Author: majerdaniel93@gmail.com"
-        usage: str = "%(prog)s [options] -f */fasta/*.faa.gz"
-        parser = argparse.ArgumentParser(
-            usage=usage, description=desc, epilog=epilog
-        )
-
-        parser.add_argument("--verbose", default=False, action="store_true")
-        parser.add_argument("--version", action="version", version="1.0.0")
-        parser.add_argument(
-            "--target_fasta_gzip_files",  # old: fastas
-            nargs="+",
-            required=True,
-            default=[],
-            type=str,
-            help="Path to the target proteome fasta files gzipped.",
-        )
-        parser.add_argument(
-            "--target_reference_species_fasta_gzip_file",  # old: refSpecie
-            required=True,
-            help="Reference species fasta file gzipped.",
-        )
-        parser.add_argument(
-            "--output_directory",  # old: outDir
-            default="fasta.crosslinked",
-            type=str,
-            help="output directory  [%(default)s]",
-        )
-        parser.add_argument(
-            "--tmp_directory",  # old: tmpDir
-            default="",
-            type=str,
-            help="TMP directory to store blat psl files [%(default)s]",
-        )
-        parser.add_argument(
-            "--minimum_coverage",  # old: minCoverage
-            default=0.95,
-            type=float,
-            help="min. coverage for blat hits  [%(default)s]",
-        )
-        parser.add_argument(
-            "--minimum_identity",  # old: minIdentity
-            default=0.98,
-            type=float,
-            help="Min. identity for blat hits  [%(default)s]",
-        )
-        parser.add_argument(
-            "--protein_limit",  # old: protLimit
-            default=0,
-            type=int,
-            help="only taxa having >l proteins [%(default)s]",
-        )
-        parser.add_argument(
-            "--max_threads",  # old: threads
-            default=4,
-            type=int,
-            help="number of cores [%(default)s]",
-        )
-
-        return CrosslinkBySequenceArgs(**vars(parser.parse_args(args)))
-
-
 def main() -> int:
     t0 = datetime.now()
     args = CrosslinkBySequenceArgs.get_arguments()
-
-    if args.verbose:
+    VERBOSE = args.verbose
+    if VERBOSE:
         print(f"Options: {str(args)}")
-    # create out and tmp directory if they dont exists
-    create_folder(o.outDir)
-    create_folder(o.tmpDir)
 
-    # xLink proteomes
+    # Create out and tmp directory if they dont exists.
+    Path(args.output_directory).mkdir(exist_ok=True, parents=True)
+    Path(args.tmp_directory).mkdir(exist_ok=True, parents=True)
+
+    # Crosslink proteomes.
     process(
-        args.fastas,
-        args.refSpecie,
-        args.outDir,
-        args.tmpDir,
-        args.threads,
-        args.minCoverage,
-        args.minIdentity,
-        args.protLimit,
+        args.target_fasta_gzip_files,
+        args.target_reference_species_fasta_gzip_file,
+        args.output_directory,
+        args.tmp_directory,
+        args.max_threads,
+        args.minimum_coverage,
+        args.minimum_identity,
+        args.protein_limit,
     )
 
     dt = datetime.now() - t0
-    sys.stderr.write("#Time elapsed: %s\n" % dt)
+    sys.stderr.write()
 
+    print(f"#Time elapsed: {dt}")
     return 0
