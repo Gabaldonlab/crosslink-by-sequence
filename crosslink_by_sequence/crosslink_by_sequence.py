@@ -22,24 +22,23 @@
 from __future__ import annotations
 
 import argparse
-import sys
-
-from dataclasses import dataclass
-from pathlib import Path
-import argparse, os, sys
-import gzip, hashlib
+import gzip
+import hashlib
+import os
 import subprocess as sp
-from typing import IO, Iterable
-
-from Bio import SeqIO
+import sys
+from dataclasses import dataclass
 from datetime import datetime
-
 from multiprocessing import Pool
+from pathlib import Path
+from typing import IO
+from typing import Iterable
 
+import numpy as np
+import pandas as pd
+from Bio import SeqIO
 
 from crosslink_by_sequence.argument_parser import CrosslinkBySequenceArgs
-import pandas as pd
-import numpy as np
 
 
 VERBOSE: bool = False
@@ -87,13 +86,13 @@ def get_sequence_length(fasta_file_path: str) -> dict[str, int]:
 
 
 def crosslink_diamond(
-    ext2meta,
-    tmp_dir,
-    reference_file,
+    ext2meta: pd.DataFrame,
+    tmp_dir: str,
+    reference_file: str,
     missing_file_name: str,
-    covTh,
-    idTh,
-    threads,
+    minimum_coverage: float,
+    minimum_identity: float,
+    threads: int,
 ):
     db_file_name: str = f"{os.path.basename(reference_file)}db"
 
@@ -121,99 +120,88 @@ def crosslink_diamond(
 
     # parse diamond output
     q2t = {}
-    Qset, Tset = set(), set()
+    Qset = set()
+    Tset = set()
     for line in open(output_file_path):
         line = line.strip()
         if not line or line.startswith("#"):
             continue
-        # parse with error capturing
+
         # Query ID, Subject ID, Percentage of identical matches, Alignment length, Number of mismatches, Number of gap openings, Start of alignment in query, End of alignment in query, Start of alignment in subject, End of alignment in subject, Expected value, Bit score
-        lData = line.split("\t")
-        if len(lData) == 12:
-            (
-                Q,
-                T,
-                identity,
-                aLength,
-                nMis,
-                nGaps,
-                sQ,
-                eQ,
-                sS,
-                eS,
-                expV,
-                score,
-            ) = lData
-            aLength = int(aLength)
-            identity = float(identity) / 100
-            if lenSequence[Q] > lenSequenceSubj[T]:
-                length = lenSequence[Q]
-            else:
-                length = lenSequenceSubj[T]
-            cov = 1.0 * (aLength) / length
-            # store Q and T
-            Qset.add(Q)
-            Tset.add(T)
+        lData: list[str] = line.split("\t")
+
         # skip lines with errors
-        else:
+        if len(lData) != 12:
             if VERBOSE:
-                sys.stderr.write(
-                    "  Error: blat2xlinks: Expected 21 elements in line, got %s %s!\n"
-                    % (len(lData), str(lData))
+                print(
+                    f"  Error: blat2xlinks: Expected 12 elements in line, got {len(lData)} {str(lData)}!\n",
+                    file=sys.stderr,
                 )
             continue
 
-        # filter low identity or low coverage hits
-        if cov < covTh or identity < idTh:
+        Q: str = lData[0]
+        T: str = lData[1]
+        identity: str = lData[2]
+        aLength: str = lData[3]
+        nMis: str = lData[4]
+        nGaps: str = lData[5]
+        sQ: str = lData[6]
+        eQ: str = lData[7]
+        sS: str = lData[8]
+        eS: str = lData[9]
+        expV: str = lData[10]
+        score: str = lData[11]
+
+        aLength: int = int(aLength)
+        identity: float = float(identity) / 100
+
+        length: int = lenSequenceSubj[T]
+        if lenSequence[Q] > lenSequenceSubj[T]:
+            length = lenSequence[Q]
+
+        cov: float = 1.0 * (aLength) / length
+
+        # store Q and T
+        Qset.add(Q)
+        Tset.add(T)
+
+        # Filter low identity or low coverage hits.
+        if cov < minimum_coverage or identity < minimum_identity:
             continue
 
-        Qprotid = Q
-        Tprotid = T
-        iScore = (identity + cov) / 2
-        Tdata = (Tprotid, iScore)
+        Qprotid: str = Q
+        Tprotid: str = T
+        iScore: float = (identity + cov) / 2
+        Tdata: tuple[str, float] = (Tprotid, iScore)
 
-        # save only the best match for each query, more than one allowed, if best matches has got the same score
+        # Save only the best match for each query,
+        # more than one allowed, if best matches
+        # has got the same score
+        q2t.setdefault(Qprotid, [Tdata])
         if Qprotid in q2t:
             # append matches if same iScore
             if iScore == q2t[Qprotid][0][1]:
-                # add entry in t2q
-                #  if Tprotid not in t2q:
-                #      t2q[Tprotid]=[]
-                #  t2q[Tprotid].append((Qprotid, iScore))
-                # add entry to q2t
                 q2t[Qprotid].append(Tdata)
+
             # update matches if better iScore
             elif iScore > q2t[Qprotid][0][1]:
                 q2t[Qprotid] = [Tdata]
-        else:
-            q2t[Qprotid] = [Tdata]
-            # add entry in t2q
-            # if Tprotid not in t2q:
-            #    t2q[Tprotid]=[]
-            # t2q[Tprotid].append((Qprotid, iScore))
-    # print("T2Q:", len(t2q))
-    # print(dict(list(t2q.items())[0:2]))
-    # print("Q2T:")
-    # print(dict(list(q2t.items())[0:2]))
 
-    df = pd.DataFrame.from_dict(q2t, orient="index")
-    # print(df)
-    if len(df.index) > 1:
-        df = df.unstack().dropna().sort_index(level=1)
-        df = df.reset_index(level=[0])
-        df["extId"] = df.index
-        df = df.reset_index()
+    q2t_frame = pd.DataFrame.from_dict(q2t, orient="index")
+    if len(q2t_frame.index) > 1:
+        q2t_frame = q2t_frame.unstack().dropna().sort_index(level=1)
+        q2t_frame = q2t_frame.reset_index(level=[0])
+        q2t_frame["extId"] = q2t_frame.index
+        q2t_frame = q2t_frame.reset_index()
 
-        df.columns = ["index", "oldIndex", "value", "extId"]
+        q2t_frame.columns = ["index", "oldIndex", "value", "extId"]
 
-        ext2metaBlat = pd.DataFrame(df["value"].tolist())
+        ext2metaBlat = pd.DataFrame(q2t_frame["value"].tolist())
         ext2metaBlat.columns = ["protid", "score"]
-        ext2metaBlat["extid"] = df["extId"]
-        # extid score  protid
+        ext2metaBlat["extid"] = q2t_frame["extId"]
         ext2metaBlat = ext2metaBlat[["extid", "score", "protid"]]
-        # print(ext2metaBlat.head())
-        # print(ext2meta.head())
-        ##select only rows that were not matched by md5
+
+        # Select only rows that were not matched by md5.
         ext2metaBlat = ext2metaBlat[
             ~ext2metaBlat["extid"].isin(ext2meta["extid"])
         ]
@@ -221,140 +209,19 @@ def crosslink_diamond(
     return ext2meta
 
 
-def xLink_blat(ext2meta, tmp_directory, refFile, missingFn, covTh, idTh):
-
-    # run blat
-    outputFileName = tmp_directory + os.path.basename(missingFn)
-    psl = "%s.psl" % outputFileName
-    # -tileSize=8 caused `Internal error genoFind.c 2225` error
-    cmd = (
-        "blat -prot -out=psl -minimum_identity=90 -minMatch=1 -out=psl -noHead %s %s %s"
-        % (refFile, missingFn, psl)
-    )
-    # print(cmd)
-    # TODO - check existance of the file
-    run_command(cmd, False)
-    # parse blat output
-    q2t = {}
-    Qset, Tset = set(), set()
-    for line in open(psl):
-        line = line.strip()
-        if not line:
-            continue
-        # parse with error capturing
-        lData = line.split("\t")
-        if len(lData) == 21:
-            (
-                match,
-                mMatch,
-                rMatch,
-                Ns,
-                Qgapcount,
-                Qgapbases,
-                Tgapcount,
-                Tgapbases,
-                strand,
-                Q,
-                Qsize,
-                Qstart,
-                Qend,
-                T,
-                Tsize,
-                Tstart,
-                Tend,
-                bcount,
-                bsizes,
-                qStarts,
-                tStarts,
-            ) = lData
-            match, mMatch, Qsize, Tsize = (
-                int(match),
-                int(mMatch),
-                int(Qsize),
-                int(Tsize),
-            )
-            # take longer query or target size as general size of compared proteins
-            if Qsize > Tsize:
-                length = Qsize
-            else:
-                length = Tsize
-            # length=Q_size
-            cov = 1.0 * (match + mMatch) / length
-            identity = 1.0 * match / length
-            # store Q and T
-            Qset.add(Q)
-            Tset.add(T)
-        # skip lines with errors
-        else:
-            if verbose:
-                sys.stderr.write(
-                    "  Error: blat2xlinks: Expected 21 elements in line, got %s %s!\n"
-                    % (len(lData), str(lData))
-                )
-            continue
-
-        # filter low identity or low coverage hits
-        if cov < covTh or identity < idTh:
-            continue
-
-        Qprotid = Q
-        Tprotid = T
-        iScore = (identity + cov) / 2
-        Tdata = (Tprotid, iScore)
-
-        # save only the best match for each query, more than one allowed, if best matches has got the same score
-        if Qprotid in q2t:
-            # append matches if same iScore
-            if iScore == q2t[Qprotid][0][1]:
-                # add entry in t2q
-                #  if Tprotid not in t2q:
-                #      t2q[Tprotid]=[]
-                #  t2q[Tprotid].append((Qprotid, iScore))
-                # add entry to q2t
-                q2t[Qprotid].append(Tdata)
-            # update matches if better iScore
-            elif iScore > q2t[Qprotid][0][1]:
-                q2t[Qprotid] = [Tdata]
-        else:
-            q2t[Qprotid] = [Tdata]
-            # add entry in t2q
-            # if Tprotid not in t2q:
-            #    t2q[Tprotid]=[]
-            # t2q[Tprotid].append((Qprotid, iScore))
-    # print("T2Q:", len(t2q))
-    # print(dict(list(t2q.items())[0:2]))
-    # print("Q2T:")
-    # print(dict(list(q2t.items())[0:2]))
-
-    df = pd.DataFrame.from_dict(q2t, orient="index")
-    df = df.unstack().dropna().sort_index(level=1)
-    df = df.reset_index(level=[0])
-    df["extId"] = df.index
-    df = df.reset_index()
-
-    df.columns = ["index", "oldIndex", "value", "extId"]
-
-    ext2metaBlat = pd.DataFrame(df["value"].tolist())
-    ext2metaBlat.columns = ["protid", "score"]
-    ext2metaBlat["extid"] = df["extId"]
-    # select only rows that were not matched by md5
-    ext2metaBlat = ext2metaBlat[~ext2metaBlat["extid"].isin(ext2meta["extid"])]
-    ext2meta = pd.concat([ext2meta, ext2metaBlat], axis=0)
-    # ext2meta2 = pd.DataFrame.from_dict(q2t)
-    return ext2meta
-
-
-def xLink_md5(hash2meta, hash2ext):
+def crosslink_md5(
+    hash_to_meta: dict[str, list[str]], hash_to_external: dict[str, list[str]]
+) -> pd.DataFrame:
     """Link proteins using md5.
     Return ext2meta for given dbID
     """
     ext2meta = pd.DataFrame(columns=["extid", "score", "protid"])
-    for md5 in hash2ext:
+    for md5 in hash_to_external:
         # if same seq already present
-        if md5 in hash2meta:
+        if md5 in hash_to_meta:
             # metaID is a list, can be a few elements
-            metaID = hash2meta[md5]
-            for extID in hash2ext[md5]:
+            metaID = hash_to_meta[md5]
+            for extID in hash_to_external[md5]:
                 # add ext2meta entry
                 for metIDEl in metaID:
                     ext2meta = ext2meta.append(
@@ -362,22 +229,19 @@ def xLink_md5(hash2meta, hash2ext):
                             [[extID, "1", metIDEl]], columns=ext2meta.columns
                         )
                     )
-
-    # print(dict(list(ext2meta.items())[0:2]))
-    # print(ext2meta.head())
     return ext2meta
 
 
 # output_directory, tmp_directory, refFile, fnames, taxid, minimum_coverage, minimum_identity, protein_limit
 def process_taxid(
-    output_directory,
-    tmp_dir,
-    reference_file,
-    file_name,
-    hash2meta,
+    output_directory: str,
+    tmp_dir: str,
+    reference_file: str,
+    file_name: str,
+    hash_to_meta: dict[str, list[str]],
     taxid,
-    minimum_coverage,
-    minimum_identity,
+    minimum_coverage: float,
+    minimum_identity: float,
     protein_limit,
 ):
 
@@ -387,9 +251,8 @@ def process_taxid(
     version: int = 0
     filePrefix: str = name
 
-    hash2ext = get_md5_fasta(file_name)
-
-    ext_to_meta_tmp = xLink_md5(hash2meta, hash2ext)
+    hash_to_ext: dict[str, list[str]] = get_md5_fasta(file_name)
+    ext_to_meta_tmp: pd.DataFrame = crosslink_md5(hash_to_meta, hash_to_ext)
 
     number_all: list[bytes] = run_command_with_return(
         f"zcat {file_name} | grep -c '>'"
@@ -428,13 +291,9 @@ def process_taxid(
     ext_to_meta_tmp.to_csv(
         ext2metaFn, compression="gzip", index=False, sep="\t", header=False
     )
-    # format fasta file with orphans
-    # outOrphans = output_directory+filePrefix+".orphans.faa.gz"
-    # print("[INFO] writing orphans for ",name )
-    # saveGzipFasta(fileName,ext2metaTmp["extid"].unique(), outOrphans, 'invert' )
 
-    # at the same time calculate number of matched and non-matched proteins
-    # print some stats with % of orphans per file
+    # Calculate number of matched and non-matched proteins.
+    # Print some stats with the percentage of orphans per file.
     number_matched = ext_to_meta_tmp["extid"].nunique()
     numberOrphans = number_all - number_matched
     percOrphans = numberOrphans * 100 / number_all
@@ -479,23 +338,6 @@ def fasta_generator(
             protein_limit,
         )
 
-
-def saveGzipFasta(file_path: str, idList, outName, param):
-    handle_in = gzip.open(file_path, "rt")
-    handle_out = gzip.open(outName, "wt")
-    for record in SeqIO.parse(handle_in, "fasta"):
-        if np.isin(record.id, idList):
-            if param == "invert":
-                continue
-            else:
-                handle_out.write(record.format("fasta"))
-        else:
-            if param == "invert":
-                handle_out.write(record.format("fasta"))
-            else:
-                continue
-
-
 def process(
     fnames,
     refFile,
@@ -507,16 +349,12 @@ def process(
     protein_limit,
 ):
     """xlink proteomes"""
-    ###get taxids and species2strains
-    # taxid = get_taxids(refFile)
     taxid = 99999999
     hash2meta = get_md5_fasta(refFile)
-    ###process files
-    # print("[INFO] Processing taxa ", taxid)
+    # process files
     make_diamond_db(tmp_directory, refFile)
 
     multiprocessing_pool = Pool(nprocs)
-    # tdata = fasta_generator(output_directory, tmp_directory, refFile, fnames, taxid, minimum_coverage, minimum_identity, protein_limit)
     tdata = []
     for fastaFile in fnames:
         tdata.append(
@@ -541,19 +379,8 @@ def process(
         if not data:
             continue
         fileNamePrefix = data
-        sys.stderr.write(
-            " %s / %s  %s    \r" % (idx, len(fnames), fileNamePrefix)
-        )
-        print("[INFO] done %s " % (fileNamePrefix))
-
-
-def create_folder(name):
-    if not os.path.exists(name):
-        cmd = "mkdir " + name
-        try:
-            run_command(cmd, False)
-        except:
-            print("Unable to create directory ", name)
+        print(f" {idx} / {len(fnames)}  {fileNamePrefix}    \r")
+        print(f"[INFO] done {fileNamePrefix} ")
 
 
 def run_command(cmd: str, skip_error: bool) -> None:
