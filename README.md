@@ -27,7 +27,7 @@ make uninstall
 crosslink-by-sequence \
     --target_reference_species_fasta_gzip_file ./crosslink-by-sequence/test_data/input_data/reference_proteomes/8.9612.faa.gz \
     --target_fasta_gzip_files ./crosslink-by-sequence/test_data/input_data/target_proteomes/0.9615.fasta.gz \
-    --output_directory ./crosslink-by-sequence/output_data \
+    --output_directory ./crosslink-by-sequence/test_data/output_data \
     --tmp_directory ./crosslink-by-sequence/output_data/tmp \
     --max_threads 4 \
     --minimum_coverage 0.5 \
