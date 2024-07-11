@@ -33,9 +33,7 @@ class DiamondOutputFileLine:
 
     @classmethod
     def yield_output_file_lines(
-        cls,
-        output_file_path: str,
-        verbose: bool
+        cls, output_file_path: str, verbose: bool
     ) -> Generator[DiamondOutputFileLine, None, None]:
         with open(
             output_file_path, "r", encoding="UTF-8"
@@ -73,18 +71,28 @@ class DiamondOutputFileLine:
                 yield mapped_line
 
 
+def make_diamond_db(tmp_dir: str, reference_file: str, verbose: bool) -> str:
+    """
+    Creates the cache database file from the reference proteome.
 
-def make_diamond_db(tmp_dir: str, reference_file: str) -> None:
-    db_file_name: str = f"{os.path.basename(reference_file)}db"
+    @return str - Path of the cache database file.
+    """
+    quiet_placeholder: str = "--quiet"
+    if verbose:
+        quiet_placeholder = ""
+
+    db_file_name: str = f"{os.path.basename(reference_file)}.db"
     output_file_path: str = os.path.join(tmp_dir, db_file_name)
+
     cmd: str = (
-        f"{__DIAMOND_BIN_PATH} makedb -d {output_file_path} --in {reference_file} "
+        f"{__DIAMOND_BIN_PATH} makedb -d {output_file_path} --in {reference_file} {quiet_placeholder}"
     )
     if not os.path.isfile(output_file_path + ".dmnd"):
         run_shell_command(cmd, False)
         print(cmd)
     else:
         print("[INFO] Diamond DB file exists for ", reference_file)
+    return db_file_name
 
 def _restack_target_to_reference_frame(
     target_to_reference: pd.DataFrame, query_to_target_frame: pd.DataFrame
@@ -128,21 +136,25 @@ def _restack_target_to_reference_frame(
 
 
 def _run_diamond(
-    tmp_dir: str, missing_file_name: str, threads: int, reference_file: str
+    tmp_dir: str, missing_file_name: str, threads: int, reference_file: str, db_file_path: str, verbose: bool
 ) -> str:
     """
     Runs Diamond as a process with the given parameters.
 
     @return str - The output file's path.
     """
-    db_file_name: str = f"{os.path.basename(reference_file)}db"
-    database_file_path: str = os.path.join(tmp_dir, db_file_name)
+    quiet_placeholder: str = "--quiet"
+    if verbose:
+        quiet_placeholder = ""
+
+    database_file_path: str = os.path.join(tmp_dir, db_file_path)
     output_file_name: str = f"{os.path.basename(missing_file_name)}diamond"
     output_file_path: str = os.path.join(tmp_dir, output_file_name)
 
     # -tileSize=8 caused `Internal error genoFind.c 2225` error
     cmd: str = (
         f"{__DIAMOND_BIN_PATH} blastp "
+        f" {quiet_placeholder}"
         f" --db {database_file_path}"
         f" --query {missing_file_name}"
         f" --out {output_file_path}"
@@ -162,13 +174,14 @@ def crosslink_with_diamond(
     tmp_dir: str,
     reference_file: str,
     missing_file_name: str,
+    db_file_path: str,
     minimum_coverage: float,
     minimum_identity: float,
     threads: int,
     verbose: bool,
 ) -> pd.DataFrame:
     output_file_path: str = _run_diamond(
-        tmp_dir, missing_file_name, threads, reference_file
+        tmp_dir, missing_file_name, threads, reference_file, db_file_path, verbose
     )
     missing_sequence_lengths: dict[str, int] = get_sequence_lengths(
         missing_file_name
@@ -182,7 +195,9 @@ def crosslink_with_diamond(
     unique_subject_ids: set[str] = set()
     query_to_target: dict[str, list[tuple[str, float]]] = {}
     output_file_lines: Generator[DiamondOutputFileLine, None, None] = (
-        DiamondOutputFileLine.yield_output_file_lines(output_file_path, verbose)
+        DiamondOutputFileLine.yield_output_file_lines(
+            output_file_path, verbose
+        )
     )
     for line in output_file_lines:
         length: int = reference_sequence_lengths[line.subject_id]
@@ -218,7 +233,9 @@ def crosslink_with_diamond(
             elif identity_score > query_to_target[query_protein_id][0][1]:
                 query_to_target[query_protein_id] = [target_data]
 
-    query_to_target_frame = pd.DataFrame.from_dict(query_to_target, orient="index")
+    query_to_target_frame = pd.DataFrame.from_dict(
+        query_to_target, orient="index"
+    )
 
     # If there's more than one record for query_to_target, re-arrange and re-format the dataframe.
     if len(query_to_target_frame.index) > 1:

@@ -47,6 +47,7 @@ class ProcessTaxidArgs:
     reference_file: str
     target_file: str
     reference_hashes: dict[str, list[str]]
+    db_file_path: str
     minimum_coverage: float
     minimum_identity: float
     verbose: bool
@@ -107,21 +108,21 @@ def write_log_file(
     return log_file_path
 
 
-def process_taxid(args: ProcessTaxidArgs) -> str:
+def process_taxid(process_taxid_args: ProcessTaxidArgs) -> str:
     db_id: int = 0
     version: int = 0
-    file_name: str = os.path.basename(args.target_file)
+    file_name: str = os.path.basename(process_taxid_args.target_file)
     file_prefix: str = os.path.splitext(file_name)[0]
     if VERBOSE:
         print(f"[INFO] Starting to process: {file_prefix}")
 
-    target_hashes: dict[str, list[str]] = get_md5_fasta(args.target_file)
+    target_hashes: dict[str, list[str]] = get_md5_fasta(process_taxid_args.target_file)
     target_to_reference_tmp: pd.DataFrame = crosslink_with_md5(
-        target_hashes, args.reference_hashes
+        target_hashes, process_taxid_args.reference_hashes
     )
 
     number_all: list[str] = run_command_with_return(
-        f"zcat {args.target_file} | grep -c '>'"
+        f"zcat {process_taxid_args.target_file} | grep -c '>'"
     )
     number_all_result: int = int(number_all[0])
     number_matched: int = target_to_reference_tmp["extid"].nunique()
@@ -136,13 +137,14 @@ def process_taxid(args: ProcessTaxidArgs) -> str:
     if has_not_matched_by_md5:
         target_to_reference_tmp = crosslink_with_diamond(
             target_to_reference_tmp,
-            args.tmp_dir,
-            args.reference_file,
-            args.target_file,
-            args.minimum_coverage,
-            args.minimum_identity,
+            process_taxid_args.tmp_dir,
+            process_taxid_args.reference_file,
+            process_taxid_args.target_file,
+            process_taxid_args.db_file_path,
+            process_taxid_args.minimum_coverage,
+            process_taxid_args.minimum_identity,
             1,
-            args.verbose,
+            process_taxid_args.verbose,
         )
 
     target_to_reference_tmp["dbid"] = db_id
@@ -153,7 +155,7 @@ def process_taxid(args: ProcessTaxidArgs) -> str:
     target_to_reference_tmp.drop_duplicates(inplace=True)
 
     result_file_path: str = os.path.join(
-        args.output_directory, f"{file_prefix}.target_to_reference.tbl.gz"
+        process_taxid_args.output_directory, f"{file_prefix}.target_to_reference.tbl.gz"
     )
     target_to_reference_tmp.to_csv(
         result_file_path,
@@ -169,7 +171,7 @@ def process_taxid(args: ProcessTaxidArgs) -> str:
     orphans_percentage: float = orphans_number * 100 / number_all_result
 
     write_log_file(
-        args.output_directory,
+        process_taxid_args.output_directory,
         file_prefix,
         number_all_result,
         number_matched,
@@ -222,8 +224,8 @@ def main() -> int:
     reference_hashes: dict[str, list[str]] = get_md5_fasta(
         args.target_reference_species_fasta_gzip_file
     )
-    make_diamond_db(
-        args.tmp_directory, args.target_reference_species_fasta_gzip_file
+    db_file_path: str = make_diamond_db(
+        args.tmp_directory, args.target_reference_species_fasta_gzip_file, VERBOSE
     )
 
     process_taxid_args: list[ProcessTaxidArgs] = [
@@ -233,6 +235,7 @@ def main() -> int:
             reference_file=args.target_reference_species_fasta_gzip_file,
             target_file=fasta_file,
             reference_hashes=reference_hashes,
+            db_file_path=db_file_path,
             minimum_coverage=args.minimum_coverage,
             minimum_identity=args.minimum_identity,
             verbose=VERBOSE,
