@@ -131,7 +131,7 @@ def _write_output_reference_to_target_result(
 
     result_file_path: str = os.path.join(
         output_directory,
-        f"{file_prefix}.target_to_reference.tbl.gz",
+        f"{file_prefix}.reference_to_target.tbl.gz",
     )
     output_reference_to_target_result.to_csv(
         result_file_path,
