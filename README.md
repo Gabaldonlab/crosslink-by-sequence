@@ -68,7 +68,8 @@ singularity run --cleanenv crosslink_by_sequence_singularity.sif crosslink-by-se
 
 ### 4.1. Diamond v2.1.9.163 (C) Max Planck Society for the Advancement of Science, Benjamin Buchfink, University of Tuebingen
 
-This tool uses the Diamond software for sequence alignment. Please cite the following when using Diamond in your work:
+This tool uses the Diamond software for sequence alignment.
+Please cite the following when using Diamond in your work:
 
 -   (Documentation, support and updates available at)[http://www.diamondsearch.org]
 -   Please cite: (Nature Methods (2021))[http://dx.doi.org/10.1038/s41592-021-01101-x]
