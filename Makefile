@@ -22,7 +22,7 @@ run-dummy-as-module:
 		--target_reference_species_fasta_gzip_file ./test_data/input_data/reference_proteomes/8.7165.faa.gz \
 		--target_fasta_gzip_files ./test_data/input_data/target_proteomes/0.7165.fasta.gz \
 		--output_directory ./test_data/output_data \
-		--tmp_directory ./output_data/tmp \
+		--tmp_directory ./test_data/output_data/tmp \
 		--max_threads 4 \
 		--minimum_coverage 0.5 \
 		--minimum_identity 0.5

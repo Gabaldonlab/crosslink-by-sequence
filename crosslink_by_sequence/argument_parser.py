@@ -53,7 +53,7 @@ class CrosslinkBySequenceArgs:
     max_threads: int
 
     @classmethod
-    def get_arguments(cls, args=sys.argv[1:]) -> CrosslinkBySequenceArgs:
+    def get_arguments(cls, args: list[str] =sys.argv[1:]) -> CrosslinkBySequenceArgs:
         desc: str = """
             The tool takes as input a reference proteome file with protein IDs in the fasta headers and proteome for cross linking.
             The output of the tool is a table with the following header fields:
