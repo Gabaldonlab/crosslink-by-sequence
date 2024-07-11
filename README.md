@@ -38,7 +38,7 @@ make uninstall
 
 ```bash
 crosslink-by-sequence \
-		--target_reference_species_fasta_gzip_file ./test_data/input_data/reference_proteomes/8.7165.faa.gz \
+		--reference_species_fasta_gzip_file ./test_data/input_data/reference_proteomes/8.7165.faa.gz \
 		--target_fasta_gzip_files ./test_data/input_data/target_proteomes/0.7165.fasta.gz \
 		--output_directory ./test_data/output_data \
 		--tmp_directory ./test_data/output_data/tmp \
@@ -51,17 +51,14 @@ crosslink-by-sequence \
 ### 2.2 Output example
 
 ```bash
-dbid	extid	version	protid	score
-0	tr|A0NAB3|A0NAB3_ANOGA	0	41948896	1
-0	tr|A0NAZ1|A0NAZ1_ANOGA	0	41948784	1
-0	tr|A0NBF5|A0NBF5_ANOGA	0	41951081	1
-0	tr|A0NC40|A0NC40_ANOGA	0	41952308	1
-0	tr|A0NEB5|A0NEB5_ANOGA	0	41949551	1
-0	tr|A0NEL3|A0NEL3_ANOGA	0	41950072	1
-0	tr|A0NH68|A0NH68_ANOGA	0	41956125	1
-0	tr|A7URP6|A7URP6_ANOGA	0	41950891	1
-0	tr|A7URS0|A7URS0_ANOGA	0	41950804	1
+reference_protein_id    target_protein_id       score
 etc...
+etc...
+41948605        tr|B0F4F0|B0F4F0_ANOGA  0.7629310344827587
+41951902        tr|D1MYR4|D1MYR4_ANOGA  0.9588148148148148
+41946886        tr|F5HIZ5|F5HIZ5_ANOGA  0.9754098360655737
+41953815        tr|F5HJI2|F5HJI2_ANOGA  0.897212543554007
+41953900        tr|F5HJN2|F5HJN2_ANOGA  0.9845
 etc...
 etc...
 ```
@@ -82,7 +79,7 @@ sudo make build-singularity-image
 
 ```bash
 singularity run --cleanenv crosslink_by_sequence_singularity.sif crosslink-by-sequence \
-		--target_reference_species_fasta_gzip_file ./test_data/input_data/reference_proteomes/8.7165.faa.gz \
+		--reference_species_fasta_gzip_file ./test_data/input_data/reference_proteomes/8.7165.faa.gz \
 		--target_fasta_gzip_files ./test_data/input_data/target_proteomes/0.7165.fasta.gz \
 		--output_directory ./test_data/output_data \
 		--tmp_directory ./test_data/output_data/tmp \

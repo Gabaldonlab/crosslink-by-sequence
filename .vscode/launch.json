@@ -10,7 +10,7 @@
             "request": "launch",
             "module": "crosslink_by_sequence",
             "args": [
-                "--target_reference_species_fasta_gzip_file",
+                "--reference_species_fasta_gzip_file",
                 "./test_data/input_data/reference_proteomes/8.7165.faa.gz",
                 "--target_fasta_gzip_files",
                 "./test_data/input_data/target_proteomes/0.7165.fasta.gz",

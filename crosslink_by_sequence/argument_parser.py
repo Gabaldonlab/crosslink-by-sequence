@@ -31,7 +31,7 @@ from multiprocessing import Pool
 class CrosslinkBySequenceArgs:
     verbose: bool
     target_fasta_gzip_files: list[str]
-    target_reference_species_fasta_gzip_file: str
+    reference_species_fasta_gzip_file: str
     output_directory: str
     tmp_directory: str
     minimum_coverage: float
@@ -70,7 +70,7 @@ class CrosslinkBySequenceArgs:
             help="Path to the target proteome fasta files gzipped.",
         )
         parser.add_argument(
-            "--target_reference_species_fasta_gzip_file",
+            "--reference_species_fasta_gzip_file",
             required=True,
             help="Reference species fasta file gzipped.",
         )

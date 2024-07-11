@@ -106,6 +106,43 @@ def write_log_file(
     return log_file_path
 
 
+def _write_output_reference_to_target_result(
+    target_to_reference_tmp: pd.DataFrame,
+    output_directory: str,
+    file_prefix: str,
+) -> str:
+    """
+    Writes the formatted result of the crosslinking to a gzipped .tsv file.
+
+    @return str - Path to the output file.
+    """
+    output_reference_to_target_result: pd.DataFrame = (
+        target_to_reference_tmp[["protid", "extid", "score"]]
+        .drop_duplicates()
+        .rename(
+            columns={
+                "protid": "reference_protein_id",
+                "extid": "target_protein_id",
+                "score": "score",
+            },
+            inplace=False,
+        )
+    )
+
+    result_file_path: str = os.path.join(
+        output_directory,
+        f"{file_prefix}.target_to_reference.tbl.gz",
+    )
+    output_reference_to_target_result.to_csv(
+        result_file_path,
+        compression="gzip",
+        index=False,
+        sep="\t",
+        header=True,
+    )
+    return result_file_path
+
+
 def process_taxid(process_taxid_args: ProcessTaxidArgs) -> str:
     db_id: int = 0
     version: int = 0
@@ -114,7 +151,9 @@ def process_taxid(process_taxid_args: ProcessTaxidArgs) -> str:
     if VERBOSE:
         print(f"[INFO] Starting to process: {file_prefix}")
 
-    target_hashes: dict[str, list[str]] = get_md5_fasta(process_taxid_args.target_file)
+    target_hashes: dict[str, list[str]] = get_md5_fasta(
+        process_taxid_args.target_file
+    )
     target_to_reference_tmp: pd.DataFrame = crosslink_with_md5(
         target_hashes, process_taxid_args.reference_hashes
     )
@@ -150,18 +189,14 @@ def process_taxid(process_taxid_args: ProcessTaxidArgs) -> str:
     target_to_reference_tmp = target_to_reference_tmp[
         ["dbid", "extid", "version", "protid", "score"]
     ]
-    target_to_reference_tmp.drop_duplicates(inplace=True)
 
-    result_file_path: str = os.path.join(
-        process_taxid_args.output_directory, f"{file_prefix}.target_to_reference.tbl.gz"
+    _ = _write_output_reference_to_target_result(
+        target_to_reference_tmp,
+        process_taxid_args.output_directory,
+        file_prefix,
     )
-    target_to_reference_tmp.to_csv(
-        result_file_path,
-        compression="gzip",
-        index=False,
-        sep="\t",
-        header=True,
-    )
+
+    target_to_reference_tmp.drop_duplicates(inplace=True)
 
     # Calculate number of matched and non-matched proteins.
     number_matched = target_to_reference_tmp["extid"].nunique()
@@ -220,17 +255,17 @@ def main() -> int:
     Path(args.tmp_directory).mkdir(exist_ok=True, parents=True)
 
     reference_hashes: dict[str, list[str]] = get_md5_fasta(
-        args.target_reference_species_fasta_gzip_file
+        args.reference_species_fasta_gzip_file
     )
     db_file_path: str = make_diamond_db(
-        args.tmp_directory, args.target_reference_species_fasta_gzip_file, VERBOSE
+        args.tmp_directory, args.reference_species_fasta_gzip_file, VERBOSE
     )
 
     process_taxid_args: list[ProcessTaxidArgs] = [
         ProcessTaxidArgs(
             output_directory=args.output_directory,
             tmp_dir=args.tmp_directory,
-            reference_file=args.target_reference_species_fasta_gzip_file,
+            reference_file=args.reference_species_fasta_gzip_file,
             target_file=fasta_file,
             reference_hashes=reference_hashes,
             db_file_path=db_file_path,

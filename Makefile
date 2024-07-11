@@ -9,7 +9,7 @@ build-singularity-image:
 
 run-dummy:
 	crosslink-by-sequence \
-		--target_reference_species_fasta_gzip_file ./test_data/input_data/reference_proteomes/8.7165.faa.gz \
+		--reference_species_fasta_gzip_file ./test_data/input_data/reference_proteomes/8.7165.faa.gz \
 		--target_fasta_gzip_files ./test_data/input_data/target_proteomes/0.7165.fasta.gz \
 		--output_directory ./test_data/output_data \
 		--tmp_directory ./test_data/output_data/tmp \
@@ -20,7 +20,7 @@ run-dummy:
 
 run-dummy-as-module:
 	python3 -m crosslink_by_sequence \
-		--target_reference_species_fasta_gzip_file ./test_data/input_data/reference_proteomes/8.7165.faa.gz \
+		--reference_species_fasta_gzip_file ./test_data/input_data/reference_proteomes/8.7165.faa.gz \
 		--target_fasta_gzip_files ./test_data/input_data/target_proteomes/0.7165.fasta.gz \
 		--output_directory ./test_data/output_data \
 		--tmp_directory ./test_data/output_data/tmp \
