@@ -23,22 +23,8 @@ from __future__ import annotations
 
 import argparse
 import sys
-
 from dataclasses import dataclass
-from pathlib import Path
-import argparse, os, sys
-import gzip, hashlib
-import subprocess as sp
-from typing import IO, Iterable
-
-from Bio import SeqIO
-from datetime import datetime
-
 from multiprocessing import Pool
-
-
-import pandas as pd
-import numpy as np
 
 
 @dataclass
@@ -51,9 +37,13 @@ class CrosslinkBySequenceArgs:
     minimum_coverage: float
     minimum_identity: float
     max_threads: int
+    keep_tmp_directory: bool
+    run_as_sync: bool
 
     @classmethod
-    def get_arguments(cls, args: list[str] =sys.argv[1:]) -> CrosslinkBySequenceArgs:
+    def get_arguments(
+        cls, args: list[str] = sys.argv[1:]
+    ) -> CrosslinkBySequenceArgs:
         desc: str = """
             The tool takes as input a reference proteome file with protein IDs in the fasta headers and proteome for cross linking.
             The output of the tool is a table with the following header fields:
@@ -72,7 +62,7 @@ class CrosslinkBySequenceArgs:
         parser.add_argument("--verbose", default=False, action="store_true")
         parser.add_argument("--version", action="version", version="1.0.0")
         parser.add_argument(
-            "--target_fasta_gzip_files",  # old: fastas
+            "--target_fasta_gzip_files",
             nargs="+",
             required=True,
             default=[],
@@ -80,39 +70,56 @@ class CrosslinkBySequenceArgs:
             help="Path to the target proteome fasta files gzipped.",
         )
         parser.add_argument(
-            "--target_reference_species_fasta_gzip_file",  # old: target_reference_species_fasta_gzip_file
+            "--target_reference_species_fasta_gzip_file",
             required=True,
             help="Reference species fasta file gzipped.",
         )
         parser.add_argument(
-            "--output_directory",  # old: output_directory
+            "--output_directory",
             default="fasta.crosslinked",
             type=str,
-            help="output directory  [%(default)s]",
+            help="Output directory for results. [%(default)s]",
         )
         parser.add_argument(
-            "--tmp_directory",  # old: tmp_directory
+            "--tmp_directory",
             default="",
             type=str,
-            help="TMP directory to store blat psl files [%(default)s]",
+            help="Temp. directory to store Diamond intermediate files. [%(default)s]",
         )
         parser.add_argument(
-            "--minimum_coverage",  # old: minimum_coverage
+            "--minimum_coverage",
             default=0.95,
             type=float,
-            help="min. coverage for blat hits  [%(default)s]",
+            help="Min. coverage for Diamond hits. [%(default)s]",
         )
         parser.add_argument(
-            "--minimum_identity",  # old: minimum_identity
+            "--minimum_identity",
             default=0.98,
             type=float,
-            help="Min. identity for blat hits  [%(default)s]",
+            help="Min. identity for Diamond hits. [%(default)s]",
         )
         parser.add_argument(
-            "--max_threads",  # old: threads
+            "--max_threads",
             default=4,
             type=int,
-            help="number of cores [%(default)s]",
+            help="Max number of threads to be used. [%(default)s]",
+        )
+        parser.add_argument(
+            "--keep-tmp-directory",
+            action="store_true",
+            required=False,
+            help="Boolean flag to keep the temp. files or not.",
+        )
+        parser.add_argument(
+            "--run-as-sync",
+            action="store_true",
+            required=False,
+            help=(
+                "Boolean flag to force"
+                " synchronously the tool."
+                " Can be useful when wanting"
+                " to start a debugger interactive session."
+            ),
         )
 
         return CrosslinkBySequenceArgs(**vars(parser.parse_args(args)))
