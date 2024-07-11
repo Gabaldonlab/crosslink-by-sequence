@@ -463,14 +463,18 @@ def compute(
         for fasta_file in target_fasta_files
     ]
 
-    with ProcessPoolExecutor(max_workers=max_threads) as executor:
-        parallelized_processes_results: list[str] = list(
-            executor.map(process_taxid, process_taxid_args)
-        )
+    # with ProcessPoolExecutor(max_workers=max_threads) as executor:
+    #     parallelized_processes_results: list[str] = list(
+    #         executor.map(process_taxid, process_taxid_args)
+    #     )
+    #     print_parallelized_processes_logs(
+    #         target_fasta_files, parallelized_processes_results
+    #     )
 
-        print_parallelized_processes_logs(
-            target_fasta_files, parallelized_processes_results
-        )
+    # FOR DEBUGGING:
+    for args in process_taxid_args:
+        process_taxid(args[0], args[1], args[2], args[3], args[4], args[5], args[6])
+
 
 
 def main() -> int:
