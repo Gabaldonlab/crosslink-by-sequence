@@ -21,37 +21,36 @@
 """
 from __future__ import annotations
 
-import gzip
-import hashlib
+from dataclasses import dataclass
 import os
 import shutil
-import subprocess
-import sys
-import time
 from concurrent.futures import ProcessPoolExecutor
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
-from typing import Callable
-from typing import Generator
-from typing import IO
+from typing import TypedDict
 
-from crosslink_by_sequence.diamond_operations import (
-    crosslink_with_diamond,
-    make_diamond_db,
-)
-from crosslink_by_sequence.utils import (
-    get_md5_fasta,
-    run_command_with_return,
-    time_it,
-)
 import pandas as pd
-from Bio import SeqIO  # type: ignore
 
 from crosslink_by_sequence.argument_parser import CrosslinkBySequenceArgs
+from crosslink_by_sequence.diamond_operations import crosslink_with_diamond
+from crosslink_by_sequence.diamond_operations import make_diamond_db
+from crosslink_by_sequence.utils import get_md5_fasta
+from crosslink_by_sequence.utils import run_command_with_return
+from crosslink_by_sequence.utils import time_it
 
 
 VERBOSE: bool = False
+
+
+@dataclass
+class ProcessTaxidArgs:
+    output_directory: str
+    tmp_dir: str
+    reference_file: str
+    target_file: str
+    reference_hashes: dict[str, list[str]]
+    minimum_coverage: float
+    minimum_identity: float
+    verbose: bool
 
 
 def crosslink_with_md5(
@@ -109,30 +108,21 @@ def write_log_file(
     return log_file_path
 
 
-def process_taxid(
-    output_directory: str,
-    tmp_dir: str,
-    reference_file: str,
-    target_file: str,
-    reference_hashes: dict[str, list[str]],
-    minimum_coverage: float,
-    minimum_identity: float,
-    verbose: bool,
-) -> str:
+def process_taxid(args: ProcessTaxidArgs) -> str:
     db_id: int = 0
     version: int = 0
-    file_name: str = os.path.basename(target_file)
+    file_name: str = os.path.basename(args.target_file)
     file_prefix: str = os.path.splitext(file_name)[0]
     if VERBOSE:
         print(f"[INFO] Starting to process: {file_prefix}")
 
-    target_hashes: dict[str, list[str]] = get_md5_fasta(target_file)
+    target_hashes: dict[str, list[str]] = get_md5_fasta(args.target_file)
     target_to_reference_tmp: pd.DataFrame = crosslink_with_md5(
-        target_hashes, reference_hashes
+        target_hashes, args.reference_hashes
     )
 
     number_all: list[str] = run_command_with_return(
-        f"zcat {target_file} | grep -c '>'"
+        f"zcat {args.target_file} | grep -c '>'"
     )
     number_all_result: int = int(number_all[0])
     number_matched: int = target_to_reference_tmp["extid"].nunique()
@@ -147,13 +137,13 @@ def process_taxid(
     if has_not_matched_by_md5:
         target_to_reference_tmp = crosslink_with_diamond(
             target_to_reference_tmp,
-            tmp_dir,
-            reference_file,
-            target_file,
-            minimum_coverage,
-            minimum_identity,
+            args.tmp_dir,
+            args.reference_file,
+            args.target_file,
+            args.minimum_coverage,
+            args.minimum_identity,
             1,
-            verbose,
+            args.verbose,
         )
 
     target_to_reference_tmp["dbid"] = db_id
@@ -164,7 +154,7 @@ def process_taxid(
     target_to_reference_tmp.drop_duplicates(inplace=True)
 
     result_file_path: str = os.path.join(
-        output_directory, f"{file_prefix}.target_to_reference.tbl.gz"
+        args.output_directory, f"{file_prefix}.target_to_reference.tbl.gz"
     )
     target_to_reference_tmp.to_csv(
         result_file_path,
@@ -180,7 +170,7 @@ def process_taxid(
     orphans_percentage: float = orphans_number * 100 / number_all_result
 
     write_log_file(
-        output_directory,
+        args.output_directory,
         file_prefix,
         number_all_result,
         number_matched,
@@ -203,58 +193,21 @@ def print_parallelized_processes_logs(
 
 
 def compute(
-    target_fasta_files: list[str],
-    reference_file: str,
-    output_directory: str,
-    tmp_directory: str,
     max_threads: int,
-    minimum_coverage: float,
-    minimum_identity: float,
     run_as_sync: bool,
-) -> None:
-    reference_hashes: dict[str, list[str]] = get_md5_fasta(reference_file)
-
-    make_diamond_db(tmp_directory, reference_file)
-
-    process_taxid_args: list[
-        tuple[str, str, str, str, dict[str, list[str]], float, float, bool]
-    ] = [
-        (
-            output_directory,
-            tmp_directory,
-            reference_file,
-            fasta_file,
-            reference_hashes,
-            minimum_coverage,
-            minimum_identity,
-            VERBOSE,
-        )
-        for fasta_file in target_fasta_files
-    ]
-
+    process_taxid_args: list[ProcessTaxidArgs],
+) -> list[str]:
+    processes_results: list[str] = []
     if run_as_sync:
-        parallelized_processes_results: list[str] = []
         for args in process_taxid_args:
-            result: str = process_taxid(
-                args[0],
-                args[1],
-                args[2],
-                args[3],
-                args[4],
-                args[5],
-                args[6],
-                args[7],
-            )
-            parallelized_processes_results.append(result)
+            result: str = process_taxid(args)
+            processes_results.append(result)
     else:
         with ProcessPoolExecutor(max_workers=max_threads) as executor:
-            parallelized_processes_results: list[str] = list(
+            processes_results = list(
                 executor.map(process_taxid, process_taxid_args)
             )
-
-    print_parallelized_processes_logs(
-        target_fasta_files, parallelized_processes_results
-    )
+    return processes_results
 
 
 @time_it
@@ -268,16 +221,33 @@ def main() -> int:
     Path(args.output_directory).mkdir(exist_ok=True, parents=True)
     Path(args.tmp_directory).mkdir(exist_ok=True, parents=True)
 
-    # Crosslink proteomes.
-    compute(
-        args.target_fasta_gzip_files,
-        args.target_reference_species_fasta_gzip_file,
-        args.output_directory,
-        args.tmp_directory,
-        args.max_threads,
-        args.minimum_coverage,
-        args.minimum_identity,
-        args.run_as_sync,
+    reference_hashes: dict[str, list[str]] = get_md5_fasta(
+        args.target_reference_species_fasta_gzip_file
+    )
+    make_diamond_db(
+        args.tmp_directory, args.target_reference_species_fasta_gzip_file
+    )
+
+    process_taxid_args: list[ProcessTaxidArgs] = [
+        ProcessTaxidArgs(
+            output_directory=args.output_directory,
+            tmp_dir=args.tmp_directory,
+            reference_file=args.target_reference_species_fasta_gzip_file,
+            target_file=fasta_file,
+            reference_hashes=reference_hashes,
+            minimum_coverage=args.minimum_coverage,
+            minimum_identity=args.minimum_identity,
+            verbose=VERBOSE,
+        )
+        for fasta_file in args.target_fasta_gzip_files
+    ]
+
+    processes_results = compute(
+        args.max_threads, args.run_as_sync, process_taxid_args
+    )
+
+    print_parallelized_processes_logs(
+        args.target_fasta_gzip_files, processes_results
     )
 
     if not args.keep_tmp_directory:

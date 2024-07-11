@@ -4,9 +4,9 @@ import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 
 from setuptools import setup
-from pathlib import Path
 
 def remove_old_egg_info() -> None:
     tar_command = ["rm", "-rf", "crosslink_by_sequence.egg-info"]

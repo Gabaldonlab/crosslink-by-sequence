@@ -23,19 +23,21 @@ from __future__ import annotations
 
 import gzip
 import hashlib
-import sys
 import subprocess
+import sys
 import time
+from typing import Any
+from typing import Callable
 from typing import IO
+
 from Bio import SeqIO
-from typing import Callable, Any
 
 
 def time_it(func: Any) -> Callable:
     def wrapper_function(*args: Any, **kwargs: Any) -> None:
         t0: float = time.monotonic()
         func(*args, **kwargs)
-        print(f"# Time elapsed: {time.monotonic() - t0}")
+        print(f"==> Time elapsed: {time.monotonic() - t0:.5f}")
 
     return wrapper_function
 

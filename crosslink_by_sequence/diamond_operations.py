@@ -1,12 +1,16 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import os
-from pathlib import Path
 import sys
-from typing import Any, Generator
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+from typing import Generator
+
 import pandas as pd
-from crosslink_by_sequence.utils import get_sequence_lengths, run_shell_command
+
+from crosslink_by_sequence.utils import get_sequence_lengths
+from crosslink_by_sequence.utils import run_shell_command
 
 
 @dataclass
@@ -221,4 +225,3 @@ def crosslink_with_diamond(
             target_to_reference, query_to_target_frame
         )
     return target_to_reference
-
