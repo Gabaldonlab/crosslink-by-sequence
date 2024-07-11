@@ -26,7 +26,6 @@ import os
 import shutil
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
-from typing import TypedDict
 
 import pandas as pd
 
@@ -217,7 +216,6 @@ def main() -> int:
     if VERBOSE:
         print(f"Options: {str(args)}")
 
-    # Create out and tmp directory if they dont exists.
     Path(args.output_directory).mkdir(exist_ok=True, parents=True)
     Path(args.tmp_directory).mkdir(exist_ok=True, parents=True)
 

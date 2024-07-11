@@ -13,6 +13,9 @@ from crosslink_by_sequence.utils import get_sequence_lengths
 from crosslink_by_sequence.utils import run_shell_command
 
 
+__DIAMOND_BIN_PATH: str = str(Path(__file__).parent / "bin" / "diamond")
+
+
 @dataclass
 class DiamondOutputFileLine:
     query_id: str  # Query ID
@@ -74,9 +77,8 @@ class DiamondOutputFileLine:
 def make_diamond_db(tmp_dir: str, reference_file: str) -> None:
     db_file_name: str = f"{os.path.basename(reference_file)}db"
     output_file_path: str = os.path.join(tmp_dir, db_file_name)
-    diamond_bin_path: str = str(Path(__file__).parent / "bin" / "diamond")
     cmd: str = (
-        f"{diamond_bin_path} makedb -d {output_file_path} --in {reference_file} "
+        f"{__DIAMOND_BIN_PATH} makedb -d {output_file_path} --in {reference_file} "
     )
     if not os.path.isfile(output_file_path + ".dmnd"):
         run_shell_command(cmd, False)
@@ -139,9 +141,8 @@ def _run_diamond(
     output_file_path: str = os.path.join(tmp_dir, output_file_name)
 
     # -tileSize=8 caused `Internal error genoFind.c 2225` error
-    diamond_bin_path: str = str(Path(__file__).parent / "bin" / "diamond")
     cmd: str = (
-        f"{diamond_bin_path} blastp "
+        f"{__DIAMOND_BIN_PATH} blastp "
         f" --db {database_file_path}"
         f" --query {missing_file_name}"
         f" --out {output_file_path}"

@@ -37,7 +37,7 @@ def time_it(func: Any) -> Callable:
     def wrapper_function(*args: Any, **kwargs: Any) -> None:
         t0: float = time.monotonic()
         func(*args, **kwargs)
-        print(f"==> Time elapsed: {time.monotonic() - t0:.5f}")
+        print(f"==> Time elapsed (s): {time.monotonic() - t0:.5f}")
 
     return wrapper_function
 
