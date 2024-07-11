@@ -15,7 +15,5 @@ From: python:3.10-bullseye
                        cmake \
                        wget
 
+    pip install --upgrade pip
     pip install -e /crosslink-by-sequence
-
-# %runscript
-#     phylome_pipeline $@

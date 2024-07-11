@@ -11,7 +11,10 @@ make install
 ```
 
 ### 1.2 Install in a fresh virtual environment
+
 ```bash
+git clone https://github.com/gabaldonlab/crosslink-by-sequence
+cd crosslink-by-sequence
 source scripts/install-with-fresh-env.sh
 ```
 
@@ -25,13 +28,14 @@ make uninstall
 
 ```bash
 crosslink-by-sequence \
-    --target_reference_species_fasta_gzip_file ./crosslink-by-sequence/test_data/input_data/reference_proteomes/8.9612.faa.gz \
-    --target_fasta_gzip_files ./crosslink-by-sequence/test_data/input_data/target_proteomes/0.9615.fasta.gz \
-    --output_directory ./crosslink-by-sequence/test_data/output_data \
-    --tmp_directory ./crosslink-by-sequence/output_data/tmp \
-    --max_threads 4 \
-    --minimum_coverage 0.5 \
-    --minimum_identity 0.5
+		--target_reference_species_fasta_gzip_file ./test_data/input_data/reference_proteomes/8.7165.faa.gz \
+		--target_fasta_gzip_files ./test_data/input_data/target_proteomes/0.7165.fasta.gz \
+		--output_directory ./test_data/output_data \
+		--tmp_directory ./test_data/output_data/tmp \
+		--max_threads 4 \
+		--minimum_coverage 0.5 \
+		--minimum_identity 0.5 \
+        --verbose
 ```
 
 ## 3. Singularity image
@@ -47,5 +51,24 @@ sudo make build-singularity-image
 ## 3.2. Run Singularity image
 
 ```bash
-singularity run --cleanenv crosslink_by_sequence_singularity.sif crosslink-by-sequence < ...rest_of_the_arguments... >
+singularity run --cleanenv crosslink_by_sequence_singularity.sif crosslink-by-sequence \
+		--target_reference_species_fasta_gzip_file ./test_data/input_data/reference_proteomes/8.7165.faa.gz \
+		--target_fasta_gzip_files ./test_data/input_data/target_proteomes/0.7165.fasta.gz \
+		--output_directory ./test_data/output_data \
+		--tmp_directory ./test_data/output_data/tmp \
+		--max_threads 4 \
+		--minimum_coverage 0.5 \
+		--minimum_identity 0.5 \
+		--verbose
 ```
+
+---
+
+## 4. Acknowledgments
+
+### 4.1. Diamond v2.1.9.163 (C) Max Planck Society for the Advancement of Science, Benjamin Buchfink, University of Tuebingen
+
+This tool uses the Diamond software for sequence alignment. Please cite the following when using Diamond in your work:
+
+-   (Documentation, support and updates available at)[http://www.diamondsearch.org]
+-   Please cite: (Nature Methods (2021))[http://dx.doi.org/10.1038/s41592-021-01101-x]

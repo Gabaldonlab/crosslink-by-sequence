@@ -15,7 +15,8 @@ run-dummy:
 		--tmp_directory ./test_data/output_data/tmp \
 		--max_threads 4 \
 		--minimum_coverage 0.5 \
-		--minimum_identity 0.5
+		--minimum_identity 0.5 \
+		--verbose
 
 run-dummy-as-module:
 	python3 -m crosslink_by_sequence \
@@ -25,5 +26,6 @@ run-dummy-as-module:
 		--tmp_directory ./test_data/output_data/tmp \
 		--max_threads 4 \
 		--minimum_coverage 0.5 \
-		--minimum_identity 0.5
+		--minimum_identity 0.5 \
+		--verbose
 
