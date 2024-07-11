@@ -30,8 +30,8 @@ import sys
 from datetime import datetime
 from multiprocessing import Pool
 from pathlib import Path
-from typing import IO, Any, Generator, TypedDict
-
+from typing import IO, Any, Generator
+from concurrent.futures import ProcessPoolExecutor
 import pandas as pd
 from Bio import SeqIO  # type: ignore
 
@@ -266,31 +266,36 @@ def crosslink_with_diamond(
 
 
 def crosslink_with_md5(
-    hash_to_meta: dict[str, list[str]], hash_to_external: dict[str, list[str]]
+    target_hashes: dict[str, list[str]], reference_hashes: dict[str, list[str]]
 ) -> pd.DataFrame:
-    """Link proteins using md5.
-    Return ext2meta for given dbID
     """
-    ext2meta: pd.DataFrame = pd.DataFrame(columns=["extid", "score", "protid"])
+    Crosslinks the reference and target sequences by their MD5 hashes.
+
+    @return pd.DataFrame (target to reference)
+        columns=["extid", "score", "protid"]
+    """
+    target_to_reference: pd.DataFrame = pd.DataFrame(
+        columns=["extid", "score", "protid"]
+    )
     shared_md5_keys: list[str] = [
-        md5 for md5 in hash_to_external if md5 in hash_to_meta
+        md5 for md5 in target_hashes if md5 in reference_hashes
     ]
     for md5 in shared_md5_keys:
         # metaID is a list, can be a few elements
-        metaID = hash_to_meta[md5]
-        for extID in hash_to_external[md5]:
+        metaID = reference_hashes[md5]
+        for extID in target_hashes[md5]:
             # add ext2meta entry
             for metIDEl in metaID:
-                ext2meta = pd.concat(
+                target_to_reference = pd.concat(
                     [
-                        ext2meta,
+                        target_to_reference,
                         pd.DataFrame(
                             [[extID, "1", metIDEl]],
-                            columns=ext2meta.columns,
+                            columns=target_to_reference.columns,
                         ),
                     ]
                 )
-    return ext2meta
+    return target_to_reference
 
 
 def write_log_file(
@@ -320,34 +325,33 @@ def process_taxid(
     tmp_dir: str,
     reference_file: str,
     file_name: str,
-    hash_to_meta: dict[str, list[str]],
+    reference_hashes: dict[str, list[str]],
     minimum_coverage: float,
     minimum_identity: float,
 ) -> str:
-
     db_id: int = 0
     version: int = 0
     file_prefix: str = os.path.basename(file_name)
     print("[INFO] Xlink ", file_prefix)
 
-    hash_to_ext: dict[str, list[str]] = get_md5_fasta(file_name)
-    ext_to_meta_tmp: pd.DataFrame = crosslink_with_md5(
-        hash_to_meta, hash_to_ext
+    target_hashes: dict[str, list[str]] = get_md5_fasta(file_name)
+    target_to_reference_tmp: pd.DataFrame = crosslink_with_md5(
+        target_hashes, reference_hashes
     )
 
     number_all: list[str] = run_command_with_return(
         f"zcat {file_name} | grep -c '>'"
     )
     number_all_result: int = int(number_all[0])
-    number_matched: int = ext_to_meta_tmp["extid"].nunique()
+    number_matched: int = target_to_reference_tmp["extid"].nunique()
 
     leftover: int = number_all_result - number_matched
-    print("Rest ", leftover)
+    print("Number of leftovers from crosslinking by MD5 hashes. ", leftover)
 
     has_not_matched_by_md5: bool = leftover > 0
     if has_not_matched_by_md5:
-        ext_to_meta_tmp = crosslink_with_diamond(
-            ext_to_meta_tmp,
+        target_to_reference_tmp = crosslink_with_diamond(
+            target_to_reference_tmp,
             tmp_dir,
             reference_file,
             file_name,
@@ -356,26 +360,26 @@ def process_taxid(
             1,
         )
 
-    ext_to_meta_tmp["dbid"] = db_id
-    ext_to_meta_tmp["version"] = version
+    target_to_reference_tmp["dbid"] = db_id
+    target_to_reference_tmp["version"] = version
 
-    ext_to_meta_tmp = ext_to_meta_tmp[
+    target_to_reference_tmp = target_to_reference_tmp[
         ["dbid", "extid", "version", "protid", "score"]
     ]
 
     ext2metaFn = os.path.join(
         output_directory, f"{file_prefix}.ext2meta.tbl.gz"
     )
-    ext_to_meta_tmp.drop_duplicates(inplace=True)
-    ext_to_meta_tmp.to_csv(
+    target_to_reference_tmp.drop_duplicates(inplace=True)
+    target_to_reference_tmp.to_csv(
         ext2metaFn, compression="gzip", index=False, sep="\t", header=False
     )
 
     # Calculate number of matched and non-matched proteins.
     # Print some stats with the percentage of orphans per file.
-    number_matched = ext_to_meta_tmp["extid"].nunique()
-    orphans_number = number_all_result - number_matched
-    orphans_percentage = orphans_number * 100 / number_all_result
+    number_matched = target_to_reference_tmp["extid"].nunique()
+    orphans_number: int = number_all_result - number_matched
+    orphans_percentage: float = orphans_number * 100 / number_all_result
 
     write_log_file(
         output_directory,
@@ -389,67 +393,23 @@ def process_taxid(
     return file_prefix
 
 
-def process(
-    target_fasta_files: list[str],
-    reference_file: str,
-    output_directory: str,
-    tmp_directory: str,
-    max_threads: int,
-    minimum_coverage: float,
-    minimum_identity: float,
-) -> None:
-    """xlink proteomes"""
-    hash2meta = get_md5_fasta(reference_file)
-
-    make_diamond_db(tmp_directory, reference_file)
-
-    multiprocessing_pool = Pool(max_threads)
-    tdata = []
-    for fasta_file in target_fasta_files:
-        tdata.append(
-            [
-                output_directory,
-                tmp_directory,
-                reference_file,
-                fasta_file,
-                hash2meta,
-                minimum_coverage,
-                minimum_identity,
-            ]
-        )
-
-    parallelized_processes: list[str] = multiprocessing_pool.starmap(
-        process_taxid, tdata
-    )
-
-    for idx, data in enumerate(parallelized_processes, 1):
-        if not data:
-            continue
-        fileNamePrefix: str = data
-        print(f" {idx} / {len(target_fasta_files)}  {fileNamePrefix}    \r")
-        print(f"[INFO] done {fileNamePrefix} ")
-
-
 def run_command(cmd: str, skip_error: bool) -> None:
-    if skip_error:
-        try:
-            process = sp.Popen(cmd, shell=True)
-        except:
+    try:
+        process = sp.Popen(cmd, shell=True)
+    except Exception as e:
+        if skip_error:
+            print("Error ocurred, but you chose to ommit it", file=sys.stderr)
             pass
-        process.communicate(b"Y\n")
-        if process.wait() != 0:
-            print("Error ocurred, but you chose to ommit it")
-            return
-    else:
-        try:
-            process = sp.Popen(cmd, shell=True)
-        except OSError as e:
-            print("Error: Execution cmd failed", file=sys.stderr)
+        else:
             raise e
 
-        process.communicate(b"Y\n")
-        if process.wait() != 0:
-            raise ChildProcessError(f"ERROR: Execution of cmd [{cmd}] failed.")
+    process.communicate(b"Y\n")
+    process.wait()
+    if process.returncode != 0 and skip_error:
+        print("Error ocurred, but you chose to ommit it", file=sys.stderr)
+        return
+    elif process.returncode != 0 and not skip_error:
+        raise ChildProcessError(f"ERROR: Execution of cmd [{cmd}] failed.")
 
 
 def run_command_with_return(cmd: str) -> list[str]:
@@ -462,6 +422,54 @@ def run_command_with_return(cmd: str) -> list[str]:
         line.decode("utf-8").strip() for line in process_stdout_lines
     ]
     return decoded_process_stdout_lines
+
+
+def print_parallelized_processes_logs(
+    target_fasta_files: list[str], parallelized_processes_results: list[str]
+) -> None:
+    for idx, file_name_prefix in enumerate(parallelized_processes_results, 1):
+        if not file_name_prefix:
+            continue
+        print(f" {idx} / {len(target_fasta_files)}  {file_name_prefix}")
+        print(f"[INFO] done {file_name_prefix} ")
+
+
+def process(
+    target_fasta_files: list[str],
+    reference_file: str,
+    output_directory: str,
+    tmp_directory: str,
+    max_threads: int,
+    minimum_coverage: float,
+    minimum_identity: float,
+) -> None:
+    reference_hashes: dict[str, list[str]] = get_md5_fasta(reference_file)
+
+    make_diamond_db(tmp_directory, reference_file)
+
+    process_taxid_args: list[
+        tuple[str, str, str, str, dict[str, list[str]], float, float]
+    ] = [
+        (
+            output_directory,
+            tmp_directory,
+            reference_file,
+            fasta_file,
+            reference_hashes,
+            minimum_coverage,
+            minimum_identity,
+        )
+        for fasta_file in target_fasta_files
+    ]
+
+    with ProcessPoolExecutor() as executor:
+        parallelized_processes_results: list[str] = list(
+            executor.map(process_taxid, process_taxid_args)
+        )
+
+        print_parallelized_processes_logs(
+            target_fasta_files, parallelized_processes_results
+        )
 
 
 def main() -> int:
