@@ -121,7 +121,7 @@ def make_diamond_db(tmp_dir: str, reference_file: str) -> None:
         f"{diamond_bin_path} makedb -d {output_file_path} --in {reference_file} "
     )
     if not os.path.isfile(output_file_path + ".dmnd"):
-        run_command(cmd, False)
+        run_shell_command(cmd, False)
         print(cmd)
     else:
         print("[INFO] Diamond DB file exists for ", reference_file)
@@ -167,7 +167,7 @@ def run_diamond(
     )
 
     # TODO: check existance of the file
-    run_command(cmd=cmd, skip_error=False)
+    run_shell_command(cmd=cmd, skip_error=False)
     return output_file_path
 
 
@@ -332,7 +332,8 @@ def process_taxid(
     db_id: int = 0
     version: int = 0
     file_prefix: str = os.path.basename(file_name)
-    print("[INFO] Xlink ", file_prefix)
+    if VERBOSE:
+        print(f"[INFO] Starting to process: {file_prefix}")
 
     target_hashes: dict[str, list[str]] = get_md5_fasta(file_name)
     target_to_reference_tmp: pd.DataFrame = crosslink_with_md5(
@@ -346,7 +347,8 @@ def process_taxid(
     number_matched: int = target_to_reference_tmp["extid"].nunique()
 
     leftover: int = number_all_result - number_matched
-    print("Number of leftovers from crosslinking by MD5 hashes. ", leftover)
+    if VERBOSE:
+        print(f"Number of leftovers from crosslinking by MD5 hashes: {leftover}")
 
     has_not_matched_by_md5: bool = leftover > 0
     if has_not_matched_by_md5:
@@ -362,7 +364,6 @@ def process_taxid(
 
     target_to_reference_tmp["dbid"] = db_id
     target_to_reference_tmp["version"] = version
-
     target_to_reference_tmp = target_to_reference_tmp[
         ["dbid", "extid", "version", "protid", "score"]
     ]
@@ -376,7 +377,6 @@ def process_taxid(
     )
 
     # Calculate number of matched and non-matched proteins.
-    # Print some stats with the percentage of orphans per file.
     number_matched = target_to_reference_tmp["extid"].nunique()
     orphans_number: int = number_all_result - number_matched
     orphans_percentage: float = orphans_number * 100 / number_all_result
@@ -393,7 +393,7 @@ def process_taxid(
     return file_prefix
 
 
-def run_command(cmd: str, skip_error: bool) -> None:
+def run_shell_command(cmd: str, skip_error: bool) -> None:
     try:
         process = sp.Popen(cmd, shell=True)
     except Exception as e:
@@ -430,11 +430,12 @@ def print_parallelized_processes_logs(
     for idx, file_name_prefix in enumerate(parallelized_processes_results, 1):
         if not file_name_prefix:
             continue
-        print(f" {idx} / {len(target_fasta_files)}  {file_name_prefix}")
-        print(f"[INFO] done {file_name_prefix} ")
+        if VERBOSE:
+            print(f" {idx} / {len(target_fasta_files)}  {file_name_prefix}")
+            print(f"[INFO] done {file_name_prefix} ")
 
 
-def process(
+def compute(
     target_fasta_files: list[str],
     reference_file: str,
     output_directory: str,
@@ -462,7 +463,7 @@ def process(
         for fasta_file in target_fasta_files
     ]
 
-    with ProcessPoolExecutor() as executor:
+    with ProcessPoolExecutor(max_workers=max_threads) as executor:
         parallelized_processes_results: list[str] = list(
             executor.map(process_taxid, process_taxid_args)
         )
@@ -473,7 +474,6 @@ def process(
 
 
 def main() -> int:
-    print("==> ", Path(__file__).parent / "bin" / "diamond")
     t0 = datetime.now()
     args = CrosslinkBySequenceArgs.get_arguments()
     VERBOSE = args.verbose
@@ -485,7 +485,7 @@ def main() -> int:
     Path(args.tmp_directory).mkdir(exist_ok=True, parents=True)
 
     # Crosslink proteomes.
-    process(
+    compute(
         args.target_fasta_gzip_files,
         args.target_reference_species_fasta_gzip_file,
         args.output_directory,
