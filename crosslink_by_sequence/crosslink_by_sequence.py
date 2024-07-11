@@ -21,6 +21,7 @@
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 import gzip
 import hashlib
 import os
@@ -38,6 +39,62 @@ from crosslink_by_sequence.argument_parser import CrosslinkBySequenceArgs
 
 
 VERBOSE: bool = False
+
+
+@dataclass
+class DiamondOutputFileLine:
+    query_id: str  # Query ID
+    subject_id: str  # Subject ID
+    identity: float  # Percentage of identical matches
+    alignment_length: int  # Alignment length
+    mismatches_number: str  # Number of mismatches
+    gap_openings_number: str  # Number of gap openings
+    query_alignment_start: str  # Start of alignment in query
+    query_alignment_end: str  # End of alignment in query
+    subject_alignment_start: str  # Start of alignment in subject
+    subject_alignment_end: str  # End of alignment in subject
+    expected_value: str  # Expected value
+    bit_score: str  # Bit score
+
+    @classmethod
+    def yield_output_file_lines(
+        cls,
+        output_file_path: str,
+    ) -> Generator[DiamondOutputFileLine, None, None]:
+        with open(
+            output_file_path, "r", encoding="UTF-8"
+        ) as opened_diamond_file:
+            for line in opened_diamond_file:
+                stripped_line: str = line.strip()
+                if not stripped_line or stripped_line.startswith("#"):
+                    continue
+                    # skip lines with errors
+                split_line: list[str] = stripped_line.split("\t")
+                if len(split_line) != 12:
+                    if VERBOSE:
+                        print(
+                            f"  Error: blat2xlinks:"
+                            " Expected 12 elements in line,"
+                            f" got {len(split_line)} {str(split_line)}!",
+                            file=sys.stderr,
+                        )
+                    continue
+
+                mapped_line = DiamondOutputFileLine(
+                    query_id=split_line[0],
+                    subject_id=split_line[1],
+                    identity=float(split_line[2]) / 100,
+                    alignment_length=int(split_line[3]),
+                    mismatches_number=split_line[4],
+                    gap_openings_number=split_line[5],
+                    query_alignment_start=split_line[6],
+                    query_alignment_end=split_line[7],
+                    subject_alignment_start=split_line[8],
+                    subject_alignment_end=split_line[9],
+                    expected_value=split_line[10],
+                    bit_score=split_line[11],
+                )
+                yield mapped_line
 
 
 def get_md5_fasta(fasta_file_path: str) -> dict[str, list[str]]:
@@ -75,65 +132,12 @@ def get_sequence_lengths(fasta_file_path: str) -> dict[str, int]:
     @return dict[str, int]
         { external_id: <sequence_length: int> }
     """
-    sequence_lengths: dict[str, int] = {}
     with gzip.open(fasta_file_path, mode="rt") as handle:
-        for fasta_record in SeqIO.parse(handle, "fasta"):
-            external_id: str = str(fasta_record.id)
-            sequence_length: int = len(str(fasta_record.seq))
-            sequence_lengths[external_id] = sequence_length
+        sequence_lengths: dict[str, int] = {
+            str(fasta_record.id): len(str(fasta_record.seq))
+            for fasta_record in SeqIO.parse(handle, "fasta")
+        }
     return sequence_lengths
-
-
-class DiamondOutputFileLine(TypedDict):
-    query_id: str  # Query ID
-    subject_id: str  # Subject ID
-    identity: float  # Percentage of identical matches
-    alignment_length: int  # Alignment length
-    mismatches_number: str  # Number of mismatches
-    gap_openings_number: str  # Number of gap openings
-    query_alignment_start: str  # Start of alignment in query
-    query_alignment_end: str  # End of alignment in query
-    subject_alignment_start: str  # Start of alignment in subject
-    subject_alignment_end: str  # End of alignment in subject
-    expected_value: str  # Expected value
-    bit_score: str  # Bit score
-
-
-def yield_output_file_lines(
-    output_file_path: str,
-) -> Generator[DiamondOutputFileLine, None, None]:
-    with open(output_file_path, "r", encoding="UTF-8") as opened_diamond_file:
-        for line in opened_diamond_file:
-            stripped_line: str = line.strip()
-            if not stripped_line or stripped_line.startswith("#"):
-                continue
-                # skip lines with errors
-            split_line: list[str] = stripped_line.split("\t")
-            if len(split_line) != 12:
-                if VERBOSE:
-                    print(
-                        f"  Error: blat2xlinks:"
-                        " Expected 12 elements in line,"
-                        f" got {len(split_line)} {str(split_line)}!",
-                        file=sys.stderr,
-                    )
-                continue
-
-            mapped_line: DiamondOutputFileLine = {
-                "query_id": split_line[0],
-                "subject_id": split_line[1],
-                "identity": float(split_line[2]) / 100,
-                "alignment_length": int(split_line[3]),
-                "mismatches_number": split_line[4],
-                "gap_openings_number": split_line[5],
-                "query_alignment_start": split_line[6],
-                "query_alignment_end": split_line[7],
-                "subject_alignment_start": split_line[8],
-                "subject_alignment_end": split_line[9],
-                "expected_value": split_line[10],
-                "bit_score": split_line[11],
-            }
-            yield mapped_line
 
 
 def run_diamond(
@@ -167,7 +171,7 @@ def run_diamond(
     return output_file_path
 
 
-def crosslink_diamond(
+def crosslink_with_diamond(
     ext2meta: pd.DataFrame,
     tmp_dir: str,
     reference_file: str,
@@ -191,27 +195,27 @@ def crosslink_diamond(
     unique_subject_ids: set[str] = set()
     query_to_target: dict[str, list[tuple[str, float]]] = {}
     output_file_lines: Generator[DiamondOutputFileLine, None, None] = (
-        yield_output_file_lines(output_file_path)
+        DiamondOutputFileLine.yield_output_file_lines(output_file_path)
     )
     for line in output_file_lines:
-        length: int = reference_sequence_lengths[line["subject_id"]]
+        length: int = reference_sequence_lengths[line.subject_id]
         if (
-            missing_sequence_lengths[line["query_id"]]
-            > reference_sequence_lengths[line["subject_id"]]
+            missing_sequence_lengths[line.query_id]
+            > reference_sequence_lengths[line.subject_id]
         ):
-            length = missing_sequence_lengths[line["query_id"]]
+            length = missing_sequence_lengths[line.query_id]
 
-        unique_query_ids.add(line["query_id"])
-        unique_subject_ids.add(line["subject_id"])
+        unique_query_ids.add(line.query_id)
+        unique_subject_ids.add(line.subject_id)
 
-        # Filter low line["identity"] or low coverage hits.
-        coverage: float = 1.0 * (line["alignment_length"]) / length
-        if coverage < minimum_coverage or line["identity"] < minimum_identity:
+        # Filter low line.identity or low coverage hits.
+        coverage: float = 1.0 * (line.alignment_length) / length
+        if coverage < minimum_coverage or line.identity < minimum_identity:
             continue
 
-        query_protein_id: str = line["query_id"]
-        target_protein_id: str = line["subject_id"]
-        identity_score: float = (line["identity"] + coverage) / 2
+        query_protein_id: str = line.query_id
+        target_protein_id: str = line.subject_id
+        identity_score: float = (line.identity + coverage) / 2
         target_data: tuple[str, float] = (target_protein_id, identity_score)
 
         # Save only the best match for each query,
@@ -261,34 +265,56 @@ def crosslink_diamond(
     return ext2meta
 
 
-def crosslink_md5(
+def crosslink_with_md5(
     hash_to_meta: dict[str, list[str]], hash_to_external: dict[str, list[str]]
 ) -> pd.DataFrame:
     """Link proteins using md5.
     Return ext2meta for given dbID
     """
-    ext2meta = pd.DataFrame(columns=["extid", "score", "protid"])
-    for md5 in hash_to_external:
-        # if same seq already present
-        if md5 in hash_to_meta:
-            # metaID is a list, can be a few elements
-            metaID = hash_to_meta[md5]
-            for extID in hash_to_external[md5]:
-                # add ext2meta entry
-                for metIDEl in metaID:
-                    ext2meta = pd.concat(
-                        [
-                            ext2meta,
-                            pd.DataFrame(
-                                [[extID, "1", metIDEl]],
-                                columns=ext2meta.columns,
-                            ),
-                        ]
-                    )
+    ext2meta: pd.DataFrame = pd.DataFrame(columns=["extid", "score", "protid"])
+    shared_md5_keys: list[str] = [
+        md5 for md5 in hash_to_external if md5 in hash_to_meta
+    ]
+    for md5 in shared_md5_keys:
+        # metaID is a list, can be a few elements
+        metaID = hash_to_meta[md5]
+        for extID in hash_to_external[md5]:
+            # add ext2meta entry
+            for metIDEl in metaID:
+                ext2meta = pd.concat(
+                    [
+                        ext2meta,
+                        pd.DataFrame(
+                            [[extID, "1", metIDEl]],
+                            columns=ext2meta.columns,
+                        ),
+                    ]
+                )
     return ext2meta
 
 
-# output_directory, tmp_directory, refFile, fnames, taxid, minimum_coverage, minimum_identity, protein_limit
+def write_log_file(
+    output_directory: str,
+    file_prefix: str,
+    number_all_result: int,
+    number_matched: int,
+    orphans_number: int,
+    orphans_percentage: float,
+) -> str:
+    """
+    Writes to log file as a .tsv line.
+
+    @return str
+        Path of the created log file.
+    """
+    log_file_path: str = os.path.join(output_directory, f"{file_prefix}.log")
+    with open(log_file_path, "wt", encoding="UTF-8") as opened_log_file:
+        opened_log_file.write(
+            f"{file_prefix}\t{number_all_result}\t{number_matched}\t{orphans_number}\t{orphans_percentage:.2f}\n"
+        )
+    return log_file_path
+
+
 def process_taxid(
     output_directory: str,
     tmp_dir: str,
@@ -299,14 +325,15 @@ def process_taxid(
     minimum_identity: float,
 ) -> str:
 
-    name: str = os.path.basename(file_name)
-    print("[INFO] Xlink ", name)
-    dbid: int = 0
+    db_id: int = 0
     version: int = 0
-    filePrefix: str = name
+    file_prefix: str = os.path.basename(file_name)
+    print("[INFO] Xlink ", file_prefix)
 
     hash_to_ext: dict[str, list[str]] = get_md5_fasta(file_name)
-    ext_to_meta_tmp: pd.DataFrame = crosslink_md5(hash_to_meta, hash_to_ext)
+    ext_to_meta_tmp: pd.DataFrame = crosslink_with_md5(
+        hash_to_meta, hash_to_ext
+    )
 
     number_all: list[str] = run_command_with_return(
         f"zcat {file_name} | grep -c '>'"
@@ -317,8 +344,9 @@ def process_taxid(
     leftover: int = number_all_result - number_matched
     print("Rest ", leftover)
 
-    if leftover > 0:
-        ext_to_meta_tmp = crosslink_diamond(
+    has_not_matched_by_md5: bool = leftover > 0
+    if has_not_matched_by_md5:
+        ext_to_meta_tmp = crosslink_with_diamond(
             ext_to_meta_tmp,
             tmp_dir,
             reference_file,
@@ -328,17 +356,17 @@ def process_taxid(
             1,
         )
 
-    ext_to_meta_tmp["dbid"] = dbid
+    ext_to_meta_tmp["dbid"] = db_id
     ext_to_meta_tmp["version"] = version
 
     ext_to_meta_tmp = ext_to_meta_tmp[
         ["dbid", "extid", "version", "protid", "score"]
     ]
 
-    # Format ext2meta to the format compartible with the current ext2meta schema in the DB
     ext2metaFn = os.path.join(
-        output_directory, "%s.ext2meta.tbl.gz" % filePrefix
+        output_directory, f"{file_prefix}.ext2meta.tbl.gz"
     )
+    ext_to_meta_tmp.drop_duplicates(inplace=True)
     ext_to_meta_tmp.to_csv(
         ext2metaFn, compression="gzip", index=False, sep="\t", header=False
     )
@@ -346,16 +374,19 @@ def process_taxid(
     # Calculate number of matched and non-matched proteins.
     # Print some stats with the percentage of orphans per file.
     number_matched = ext_to_meta_tmp["extid"].nunique()
-    numberOrphans = number_all_result - number_matched
-    percOrphans = numberOrphans * 100 / number_all_result
+    orphans_number = number_all_result - number_matched
+    orphans_percentage = orphans_number * 100 / number_all_result
 
-    log_file_path: str = os.path.join(output_directory, f"{filePrefix}.log")
-    with open(log_file_path, "wt", encoding="UTF-8") as opened_log_file:
-        opened_log_file.write(
-            f"{filePrefix}\t{number_all_result}\t{number_matched}\t{numberOrphans}\t{percOrphans:.2f}\n"
-        )
+    write_log_file(
+        output_directory,
+        file_prefix,
+        number_all_result,
+        number_matched,
+        orphans_number,
+        orphans_percentage,
+    )
 
-    return filePrefix
+    return file_prefix
 
 
 def process(
