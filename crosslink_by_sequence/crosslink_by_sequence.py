@@ -405,13 +405,13 @@ def process(
 
     multiprocessing_pool = Pool(max_threads)
     tdata = []
-    for fastaFile in target_fasta_files:
+    for fasta_file in target_fasta_files:
         tdata.append(
             [
                 output_directory,
                 tmp_directory,
                 reference_file,
-                fastaFile,
+                fasta_file,
                 hash2meta,
                 minimum_coverage,
                 minimum_identity,
