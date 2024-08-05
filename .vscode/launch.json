@@ -24,6 +24,7 @@
                 "0.5",
                 "--minimum_identity",
                 "0.5",
+                "--run-as-sync"
             ]
         }
     ]
